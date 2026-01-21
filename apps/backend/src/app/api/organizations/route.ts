@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@touchline/database";
 import { requireAuth, requireRole } from "@/lib/security";
+import { organizationSchema } from "@/lib/validation";
 
 /**
  * @openapi
@@ -49,7 +50,7 @@ export async function GET() {
  * /api/organizations:
  *   post:
  *     summary: Create a standalone organization (SUPER_ADMIN only)
- *     description: Registers a new organization with a unique name and automatically generated slug.
+ *     description: Registers a new organization with a unique name and automatically generated slug/joinCode.
  *     tags:
  *       - Organizations
  *     requestBody:
@@ -100,11 +101,15 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
         }
 
-        const { name, description, address, contactEmail, contactPhone } = body;
-
-        if (!name) {
-            return NextResponse.json({ error: "Organization name is required" }, { status: 400 });
+        const result = organizationSchema.safeParse(body);
+        if (!result.success) {
+            return NextResponse.json(
+                { error: "Validation failed", details: result.error.flatten().fieldErrors },
+                { status: 400 }
+            );
         }
+
+        const { name, description, address, contactEmail, contactPhone } = result.data;
 
         const slug = name.toLowerCase().replace(/ /g, "-").replace(/[^\w-]+/g, "");
 
@@ -116,15 +121,27 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Organization with this name or slug already exists" }, { status: 400 });
         }
 
-        const org = await prisma.organization.create({
-            data: {
-                name,
-                slug,
-                description,
-                address,
-                contactEmail,
-                contactPhone
-            }
+        const org = await prisma.$transaction(async (tx) => {
+            // 1. Create with initial data
+            const newOrg = await tx.organization.create({
+                data: {
+                    name,
+                    slug,
+                    description,
+                    address,
+                    contactEmail,
+                    contactPhone
+                }
+            });
+
+            // 2. Generate joinCode using ID (e.g., name-id or slug-id)
+            const joinCode = `${slug}-${newOrg.id}`.toUpperCase();
+
+            // 3. Update with joinCode
+            return await tx.organization.update({
+                where: { id: newOrg.id },
+                data: { joinCode }
+            });
         });
 
         return NextResponse.json(org, { status: 201 });

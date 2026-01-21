@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@touchline/database";
 import { requireAuth, requireRole } from "@/lib/security";
+import { organizationSchema } from "@/lib/validation";
 
 /**
  * @openapi
@@ -150,7 +151,16 @@ export async function PATCH(
         return NextResponse.json({ error: "Invalid JSON input" }, { status: 400 });
     }
 
-    const { name, description, logoUrl, address, contactEmail, contactPhone } = body;
+    const result = organizationSchema.partial().safeParse(body);
+    if (!result.success) {
+        return NextResponse.json(
+            { error: "Validation failed", details: result.error.flatten().fieldErrors },
+            { status: 400 }
+        );
+    }
+
+    const { name, description, address, contactEmail, contactPhone } = result.data;
+    const { logoUrl } = body; // logoUrl not in validation yet, keeping as is
 
     const data: any = {};
     if (name !== undefined) data.name = name;
