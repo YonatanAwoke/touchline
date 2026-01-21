@@ -13,12 +13,6 @@ export async function POST() {
             return NextResponse.json({ error: "No refresh token" }, { status: 401 });
         }
 
-        // 1. Find all refresh tokens for users (or use a better indexing strategy)
-        // For simplicity, we fetch the hash from DB that matches the user's session if known,
-        // but without a userId in the cookie, we have to find it by hash comparison or store userId in cookie.
-
-        // Better: Store userId in a separate cookie or encoded in the refresh token itself.
-        // Let's assume we store userId in a cookie for this implementation.
         const userIdCookie = cookieStore.get("userId")?.value;
         if (!userIdCookie) {
             return NextResponse.json({ error: "Missing session info" }, { status: 401 });
@@ -60,6 +54,7 @@ export async function POST() {
             email: user.email,
             username: user.username,
             role: user.role,
+            organizationId: user.organizationId,
             coachId: user.coachProfile?.id,
         });
 
@@ -88,6 +83,14 @@ export async function POST() {
             secure: process.env.NODE_ENV === "production",
             sameSite: "lax",
             maxAge: 7 * 24 * 60 * 60,
+            path: "/",
+        });
+
+        cookieStore.set("userId", user.id.toString(), {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge: 7 * 24 * 60 * 60, // 7 days
             path: "/",
         });
 

@@ -12,12 +12,30 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model Organization {
+  id           Int      @id @default(autoincrement())
+  name         String   @unique
+  slug         String?   @unique
+  description  String?
+  logoUrl      String?
+  address      String?
+  contactEmail String?
+  contactPhone String?
+  users        User[]
+  teams        Team[]
+  sessions     Session[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model User {
   id                   Int            @id @default(autoincrement())
   email                String         @unique
   username             String         @unique
   password             String
   role                 Role           @default(COACH)
+  organizationId       Int
+  organization         Organization   @relation(fields: [organizationId], references: [id])
   failedLoginAttempts  Int            @default(0)
   lockoutUntil         DateTime?
   resetPasswordToken   String?        @unique
@@ -39,9 +57,11 @@ model RefreshToken {
 }
 
 enum Role {
+  SUPER_ADMIN
+  CLUB_ADMIN
   COACH
+  ANALYST
   PLAYER
-  ADMIN
 }
 
 model Coach {
@@ -62,20 +82,24 @@ model Player {
 }
 
 model Team {
-  id      Int      @id @default(autoincrement())
-  name    String
-  coachId Int
-  coach   Coach    @relation(fields: [coachId], references: [id])
-  players Player[]
+  id             Int          @id @default(autoincrement())
+  name           String
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  coachId        Int
+  coach          Coach        @relation(fields: [coachId], references: [id])
+  players        Player[]
 }
 
 model Session {
-  id        Int      @id @default(autoincrement())
-  title     String
-  date      DateTime
-  coachId   Int
-  coach     Coach    @relation(fields: [coachId], references: [id])
-  videos    Video[]
+  id             Int          @id @default(autoincrement())
+  title          String
+  date           DateTime
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  coachId        Int
+  coach          Coach        @relation(fields: [coachId], references: [id])
+  videos         Video[]
 }
 
 model Video {

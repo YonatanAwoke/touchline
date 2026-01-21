@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import crypto from "crypto";
 
 const secret = new TextEncoder().encode(
     process.env.JWT_SECRET

@@ -9,8 +9,8 @@ import { loginSchema } from "@/lib/validation";
  * @openapi
  * /api/auth/login:
  *   post:
- *     summary: Login for coaches
- *     description: Verifies credentials (email or username), tracks attempts, issues access and refresh tokens.
+ *     summary: Login for club staff and players
+ *     description: Verifies credentials, tracks attempts, and issues tenant-aware tokens.
  *     tags:
  *       - Auth
  *     requestBody:
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
                     { username: username || undefined }
                 ]
             },
-            include: { coachProfile: true },
+            include: { coachProfile: true, organization: true },
         });
 
         if (!user) {
@@ -123,6 +123,7 @@ export async function POST(request: Request) {
             email: user.email,
             username: user.username,
             role: user.role,
+            organizationId: user.organizationId,
             coachId: user.coachProfile?.id,
         });
 
@@ -172,6 +173,8 @@ export async function POST(request: Request) {
                 email: user.email,
                 username: user.username,
                 role: user.role,
+                organizationId: user.organizationId,
+                organizationName: user.organization.name
             },
         });
     } catch (error) {

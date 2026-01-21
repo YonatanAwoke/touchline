@@ -7,8 +7,8 @@ import { registerSchema } from "@/lib/validation";
  * @openapi
  * /api/auth/register:
  *   post:
- *     summary: Register a new coach
- *     description: Creates a new user with the COACH role.
+ *     summary: Register a new organization and club admin
+ *     description: Creates a new organization/club and its initial CLUB_ADMIN user.
  *     tags:
  *       - Auth
  *     requestBody:
@@ -21,6 +21,7 @@ import { registerSchema } from "@/lib/validation";
  *               - email
  *               - username
  *               - password
+ *               - organizationName
  *             properties:
  *               email:
  *                 type: string
@@ -28,15 +29,23 @@ import { registerSchema } from "@/lib/validation";
  *                 type: string
  *               password:
  *                 type: string
+ *               organizationName:
+ *                 type: string
  *     responses:
  *       200:
- *         description: User registered successfully
+ *         description: Organization and Admin registered successfully
  *       400:
- *         description: Validation error or user already exists
+ *         description: Validation error or user/org already exists
  */
 export async function POST(request: Request) {
     try {
-        const body = await request.json();
+        let body;
+        try {
+            const text = await request.text();
+            body = text ? JSON.parse(text) : {};
+        } catch (e) {
+            return NextResponse.json({ error: "Invalid JSON input" }, { status: 400 });
+        }
 
         // 1. Validate input
         const result = registerSchema.safeParse(body);
@@ -47,9 +56,9 @@ export async function POST(request: Request) {
             );
         }
 
-        const { email, username, password } = result.data;
+        const { email, username, password, organizationName } = result.data;
 
-        // 2. Check for existing user
+        // 2. Check if user or organization exists
         const existingUser = await prisma.user.findFirst({
             where: {
                 OR: [
@@ -67,32 +76,54 @@ export async function POST(request: Request) {
             );
         }
 
+        const existingOrg = await prisma.organization.findUnique({
+            where: { name: organizationName }
+        });
+
+        if (existingOrg) {
+            return NextResponse.json(
+                { error: "Organization with this name already exists" },
+                { status: 400 }
+            );
+        }
+
         // 3. Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // 4. Create user
-        const user = await prisma.user.create({
-            data: {
-                email,
-                username,
-                password: hashedPassword,
-                role: "COACH",
-                coachProfile: {
-                    create: {},
-                },
-            },
-            include: {
-                coachProfile: true,
-            },
+        // 4. Create Organization and Admin User in a transaction
+        const transaction = await prisma.$transaction(async (tx) => {
+            // Create Organization with slug
+            const slug = organizationName.toLowerCase().replace(/ /g, "-").replace(/[^\w-]+/g, "");
+            const org = await tx.organization.create({
+                data: {
+                    name: organizationName,
+                    slug
+                }
+            });
+
+            // Create User (Defaulting to CLUB_ADMIN as the creator)
+            const user = await tx.user.create({
+                data: {
+                    email,
+                    username,
+                    password: hashedPassword,
+                    role: "CLUB_ADMIN",
+                    organizationId: org.id
+                }
+            });
+
+            return { user, org };
         });
 
         return NextResponse.json({
-            message: "User registered successfully",
+            message: "Organization registered successfully",
             user: {
-                id: user.id,
-                email: user.email,
-                username: user.username,
-                role: user.role,
+                id: transaction.user.id,
+                email: transaction.user.email,
+                username: transaction.user.username,
+                role: transaction.user.role,
+                organizationId: transaction.org.id,
+                organizationName: transaction.org.name
             },
         });
     } catch (error) {
