@@ -12,10 +12,25 @@ async function main() {
         update: {},
         create: {
             name: 'Touchline Academy',
+            slug: 'touchline-academy',
+            joinCode: 'JOIN123'
         },
     });
 
-    // 2. Create a Club Admin
+    // 2. Create Global SUPER_ADMIN (Secure Creation)
+    const superAdmin = await prisma.user.upsert({
+        where: { email: 'super@touchline.com' },
+        update: {},
+        create: {
+            email: 'super@touchline.com',
+            username: 'superadmin',
+            password: await bcrypt.hash('super123', 10),
+            role: 'SUPER_ADMIN',
+            organizationId: org.id // Although SUPER_ADMIN is global, it must be linked to an org for the FK
+        }
+    });
+
+    // 3. Create a Club Admin
     const admin = await prisma.user.upsert({
         where: { email: 'admin@touchline.com' },
         update: {},

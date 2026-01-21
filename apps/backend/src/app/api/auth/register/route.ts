@@ -7,8 +7,8 @@ import { registerSchema } from "@/lib/validation";
  * @openapi
  * /api/auth/register:
  *   post:
- *     summary: Register a new organization and club admin
- *     description: Creates a new organization/club and its initial CLUB_ADMIN user in a single transaction.
+ *     summary: Register a new standard user (Coach, Analyst, Player)
+ *     description: Allows users to join an existing organization using a slug and a secure joinCode.
  *     tags:
  *       - Auth
  *     requestBody:
@@ -21,7 +21,9 @@ import { registerSchema } from "@/lib/validation";
  *               - email
  *               - username
  *               - password
- *               - organizationName
+ *               - organizationSlug
+ *               - joinCode
+ *               - role
  *             properties:
  *               email:
  *                 type: string
@@ -29,15 +31,20 @@ import { registerSchema } from "@/lib/validation";
  *                 type: string
  *               password:
  *                 type: string
- *               organizationName:
+ *               organizationSlug:
  *                 type: string
+ *               joinCode:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [COACH, ANALYST, PLAYER]
  *     responses:
- *       200:
- *         description: Organization and Admin registered successfully
+ *       201:
+ *         description: User registered successfully
  *       400:
- *         description: Bad Request - Validation error or user/org already exists
- *       500:
- *         description: Internal server error
+ *         description: Validation error or invalid join credentials
+ *       404:
+ *         description: Organization not found
  */
 export async function POST(request: Request) {
     try {
@@ -49,7 +56,6 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Invalid JSON input" }, { status: 400 });
         }
 
-        // 1. Validate input
         const result = registerSchema.safeParse(body);
         if (!result.success) {
             return NextResponse.json(
@@ -58,81 +64,56 @@ export async function POST(request: Request) {
             );
         }
 
-        const { email, username, password, organizationName } = result.data;
+        const { email, username, password, organizationSlug, joinCode, role } = result.data;
 
-        // 2. Check if user or organization exists
+        // 1. Verify Organization and Join Code
+        const org = await prisma.organization.findUnique({
+            where: { slug: organizationSlug }
+        });
+
+        if (!org) {
+            return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+        }
+
+        if (org.joinCode !== joinCode) {
+            return NextResponse.json({ error: "Invalid join code for this organization" }, { status: 400 });
+        }
+
+        // 2. Check if user already exists
         const existingUser = await prisma.user.findFirst({
-            where: {
-                OR: [
-                    { email },
-                    { username }
-                ]
-            },
+            where: { OR: [{ email }, { username }] }
         });
 
         if (existingUser) {
-            const field = existingUser.email === email ? "email" : "username";
-            return NextResponse.json(
-                { error: `User with this ${field} already exists` },
-                { status: 400 }
-            );
+            return NextResponse.json({ error: "Email or username already in use" }, { status: 400 });
         }
 
-        const existingOrg = await prisma.organization.findUnique({
-            where: { name: organizationName }
-        });
-
-        if (existingOrg) {
-            return NextResponse.json(
-                { error: "Organization with this name already exists" },
-                { status: 400 }
-            );
-        }
-
-        // 3. Hash password
+        // 3. Create User
         const hashedPassword = await bcrypt.hash(password, 10);
-
-        // 4. Create Organization and Admin User in a transaction
-        const transaction = await prisma.$transaction(async (tx) => {
-            // Create Organization with slug
-            const slug = organizationName.toLowerCase().replace(/ /g, "-").replace(/[^\w-]+/g, "");
-            const org = await tx.organization.create({
-                data: {
-                    name: organizationName,
-                    slug
-                }
-            });
-
-            // Create User (Defaulting to CLUB_ADMIN as the creator)
-            const user = await tx.user.create({
-                data: {
-                    email,
-                    username,
-                    password: hashedPassword,
-                    role: "CLUB_ADMIN",
-                    organizationId: org.id
-                }
-            });
-
-            return { user, org };
+        const user = await prisma.user.create({
+            data: {
+                email,
+                username,
+                password: hashedPassword,
+                role,
+                organizationId: org.id
+            },
+            select: {
+                id: true,
+                email: true,
+                username: true,
+                role: true,
+                organizationId: true
+            }
         });
 
         return NextResponse.json({
-            message: "Organization registered successfully",
-            user: {
-                id: transaction.user.id,
-                email: transaction.user.email,
-                username: transaction.user.username,
-                role: transaction.user.role,
-                organizationId: transaction.org.id,
-                organizationName: transaction.org.name
-            },
-        });
+            message: "User registered successfully",
+            user
+        }, { status: 201 });
+
     } catch (error) {
         console.error("Registration error:", error);
-        return NextResponse.json(
-            { error: "Internal server error" },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
