@@ -1,0 +1,130 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Organization {
+  id           Int      @id @default(autoincrement())
+  name         String   @unique
+  slug         String?   @unique
+  description  String?
+  logoUrl      String?
+  address      String?
+  contactEmail String?
+  contactPhone String?
+  users        User[]
+  teams        Team[]
+  sessions     Session[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model User {
+  id                   Int            @id @default(autoincrement())
+  email                String         @unique
+  username             String         @unique
+  password             String
+  role                 Role           @default(COACH)
+  organizationId       Int
+  organization         Organization   @relation(fields: [organizationId], references: [id])
+  failedLoginAttempts  Int            @default(0)
+  lockoutUntil         DateTime?
+  resetPasswordToken   String?        @unique
+  resetPasswordExpires DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  coachProfile         Coach?
+  playerProfile        Player?
+  refreshTokens        RefreshToken[]
+}
+
+model RefreshToken {
+  id          Int      @id @default(autoincrement())
+  hashedToken String   @unique
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+}
+
+enum Role {
+  SUPER_ADMIN
+  CLUB_ADMIN
+  COACH
+  ANALYST
+  PLAYER
+}
+
+model Coach {
+  id      Int      @id @default(autoincrement())
+  userId  Int      @unique
+  user    User     @relation(fields: [userId], references: [id])
+  teams   Team[]
+  sessions Session[]
+}
+
+model Player {
+  id      Int      @id @default(autoincrement())
+  userId  Int      @unique
+  user    User     @relation(fields: [userId], references: [id])
+  teamId  Int?
+  team    Team?    @relation(fields: [teamId], references: [id])
+  metrics Metric[]
+}
+
+model Team {
+  id             Int          @id @default(autoincrement())
+  name           String
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  coachId        Int
+  coach          Coach        @relation(fields: [coachId], references: [id])
+  players        Player[]
+}
+
+model Session {
+  id             Int          @id @default(autoincrement())
+  title          String
+  date           DateTime
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  coachId        Int
+  coach          Coach        @relation(fields: [coachId], references: [id])
+  videos         Video[]
+}
+
+model Video {
+  id        Int      @id @default(autoincrement())
+  url       String
+  status    VideoStatus @default(PENDING)
+  sessionId Int
+  session   Session  @relation(fields: [sessionId], references: [id])
+  metrics   Metric[]
+}
+
+enum VideoStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Metric {
+  id        Int      @id @default(autoincrement())
+  type      String   // e.g., "Speed", "Agility", "PoseAccuracy"
+  value     Float
+  playerId  Int
+  player    Player   @relation(fields: [playerId], references: [id])
+  videoId   Int?
+  video     Video?   @relation(fields: [videoId], references: [id])
+  createdAt DateTime @default(now())
+}
