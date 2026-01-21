@@ -20,10 +20,16 @@ import { requireAuth } from "@/lib/security";
  *     responses:
  *       200:
  *         description: User information fetched successfully
- *       404:
- *         description: User not found or outside organization
+ *       400:
+ *         description: Invalid user ID
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Outside your organization
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
  */
 export async function GET(
     request: Request,
@@ -84,6 +90,33 @@ export async function GET(
  *         required: true
  *         schema:
  *           type: integer
+ *         description: The user ID
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *               username:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [SUPER_ADMIN, CLUB_ADMIN, COACH, ANALYST, PLAYER]
+ *     responses:
+ *       200:
+ *         description: User updated successfully
+ *       400:
+ *         description: Bad Request - Invalid input or no fields to update
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Insufficient permissions or outside organization
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
  */
 export async function PATCH(
     request: Request,
@@ -96,6 +129,10 @@ export async function PATCH(
     const { organizationId, role, userId: currentUserId } = session;
     const { id } = await params;
     const targetUserId = parseInt(id);
+
+    if (isNaN(targetUserId)) {
+        return NextResponse.json({ error: "Invalid user ID" }, { status: 400 });
+    }
 
     try {
         let body;
@@ -139,6 +176,10 @@ export async function PATCH(
             data.role = newRole;
         }
 
+        if (Object.keys(data).length === 0) {
+            return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+        }
+
         const updatedUser = await prisma.user.update({
             where: { id: targetUserId },
             data,
@@ -166,6 +207,20 @@ export async function PATCH(
  *         required: true
  *         schema:
  *           type: integer
+ *         description: The user ID
+ *     responses:
+ *       200:
+ *         description: User deleted successfully
+ *       400:
+ *         description: Invalid user ID
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Requires Admin permissions
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
  */
 export async function DELETE(
     request: Request,

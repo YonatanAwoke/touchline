@@ -10,7 +10,7 @@ import { loginSchema } from "@/lib/validation";
  * /api/auth/login:
  *   post:
  *     summary: Login for club staff and players
- *     description: Verifies credentials, tracks attempts, and issues tenant-aware tokens.
+ *     description: Verifies credentials, tracks attempts, and issues secure HTTP-only cookies (Access & Refresh tokens).
  *     tags:
  *       - Auth
  *     requestBody:
@@ -30,13 +30,15 @@ import { loginSchema } from "@/lib/validation";
  *               - password
  *     responses:
  *       200:
- *         description: Login successful
- *       401:
- *         description: Invalid credentials
- *       403:
- *         description: Account locked
+ *         description: Login successful - Cookies set
  *       400:
- *         description: Validation error
+ *         description: Bad Request - Validation error
+ *       401:
+ *         description: Unauthorized - Invalid credentials
+ *       403:
+ *         description: Forbidden - Account locked
+ *       500:
+ *         description: Internal server error
  */
 export async function POST(request: Request) {
     try {

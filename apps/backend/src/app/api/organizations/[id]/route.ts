@@ -7,6 +7,7 @@ import { requireAuth, requireRole } from "@/lib/security";
  * /api/organizations/{id}:
  *   get:
  *     summary: Get organization details
+ *     description: Returns detailed info about a specific organization. Requires SUPER_ADMIN or membership.
  *     tags:
  *       - Organizations
  *     parameters:
@@ -15,6 +16,20 @@ import { requireAuth, requireRole } from "@/lib/security";
  *         required: true
  *         schema:
  *           type: integer
+ *         description: The organization ID
+ *     responses:
+ *       200:
+ *         description: Organization details fetched successfully
+ *       400:
+ *         description: Invalid organization ID
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Not a member or SUPER_ADMIN
+ *       404:
+ *         description: Organization not found
+ *       500:
+ *         description: Internal server error
  */
 export async function GET(
     request: Request,
@@ -62,6 +77,7 @@ export async function GET(
  * /api/organizations/{id}:
  *   patch:
  *     summary: Update organization details
+ *     description: Updates metadata fields of an organization. Automatic slug regeneration if name changes.
  *     tags:
  *       - Organizations
  *     parameters:
@@ -70,6 +86,7 @@ export async function GET(
  *         required: true
  *         schema:
  *           type: integer
+ *         description: The organization ID
  *     requestBody:
  *       content:
  *         application/json:
@@ -88,6 +105,19 @@ export async function GET(
  *                 type: string
  *               contactPhone:
  *                 type: string
+ *     responses:
+ *       200:
+ *         description: Organization updated successfully
+ *       400:
+ *         description: Bad Request - Validation failed or no fields to update
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Requires SUPER_ADMIN or CLUB_ADMIN of the organization
+ *       404:
+ *         description: Organization not found
+ *       500:
+ *         description: Internal server error
  */
 export async function PATCH(
     request: Request,
@@ -156,6 +186,7 @@ export async function PATCH(
  * /api/organizations/{id}:
  *   delete:
  *     summary: Delete organization (SUPER_ADMIN only)
+ *     description: Permanently removes an organization and all associated data.
  *     tags:
  *       - Organizations
  *     parameters:
@@ -164,6 +195,20 @@ export async function PATCH(
  *         required: true
  *         schema:
  *           type: integer
+ *         description: The organization ID
+ *     responses:
+ *       200:
+ *         description: Organization deleted successfully
+ *       400:
+ *         description: Invalid organization ID
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Requires SUPER_ADMIN
+ *       404:
+ *         description: Organization not found
+ *       500:
+ *         description: Internal server error
  */
 export async function DELETE(
     request: Request,

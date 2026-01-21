@@ -8,7 +8,7 @@ import bcrypt from "bcryptjs";
  * /api/users:
  *   get:
  *     summary: Retrieve users in your organization
- *     description: Returns a sanitized list of users belonging to the same organization as the requester.
+ *     description: Returns a sanitized list of users belonging to the same organization as the requester. SUPER_ADMINs see all users.
  *     tags:
  *       - Users
  *     responses:
@@ -16,6 +16,8 @@ import bcrypt from "bcryptjs";
  *         description: List of users fetched successfully
  *       401:
  *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 export async function GET() {
     const auth = await requireAuth();
@@ -50,7 +52,7 @@ export async function GET() {
  * /api/users:
  *   post:
  *     summary: Add a new user to the organization (CLUB_ADMIN only)
- *     description: Allows a Club Admin to create COACH, ANALYST, or PLAYER accounts.
+ *     description: Allows a Club Admin to create COACH, ANALYST, or PLAYER accounts within their own organization.
  *     tags:
  *       - Users
  *     requestBody:
@@ -77,8 +79,14 @@ export async function GET() {
  *     responses:
  *       201:
  *         description: User created successfully
+ *       400:
+ *         description: Bad Request - Validation failed or invalid role
+ *       401:
+ *         description: Unauthorized
  *       403:
- *         description: Forbidden (Not a CLUB_ADMIN)
+ *         description: Forbidden - Requires CLUB_ADMIN or SUPER_ADMIN
+ *       500:
+ *         description: Internal server error
  */
 export async function POST(request: Request) {
     const auth = await requireAuth();
@@ -90,7 +98,8 @@ export async function POST(request: Request) {
     if (roleCheck.error) return NextResponse.json({ error: roleCheck.error }, { status: roleCheck.status });
 
     try {
-        const { email, username, password, role } = await request.json();
+        const body = await request.json();
+        const { email, username, password, role } = body;
 
         // Validate role (don't allow self-elevation to admin or super_admin via this endpoint)
         if (!["COACH", "ANALYST", "PLAYER"].includes(role)) {

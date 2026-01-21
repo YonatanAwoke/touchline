@@ -8,7 +8,7 @@ import { registerSchema } from "@/lib/validation";
  * /api/auth/register:
  *   post:
  *     summary: Register a new organization and club admin
- *     description: Creates a new organization/club and its initial CLUB_ADMIN user.
+ *     description: Creates a new organization/club and its initial CLUB_ADMIN user in a single transaction.
  *     tags:
  *       - Auth
  *     requestBody:
@@ -35,7 +35,9 @@ import { registerSchema } from "@/lib/validation";
  *       200:
  *         description: Organization and Admin registered successfully
  *       400:
- *         description: Validation error or user/org already exists
+ *         description: Bad Request - Validation error or user/org already exists
+ *       500:
+ *         description: Internal server error
  */
 export async function POST(request: Request) {
     try {
