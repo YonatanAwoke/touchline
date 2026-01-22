@@ -128,3 +128,50 @@ export const playerUpdateSchema = z.object({
 
 export type PlayerCreateInput = z.infer<typeof playerCreateSchema>;
 export type PlayerUpdateInput = z.infer<typeof playerUpdateSchema>;
+
+/**
+ * Session and Participant schemas
+ */
+export const sessionCreateSchema = z.object({
+    title: z.string().min(1),
+    date: z.string(), // ISO date
+    organizationId: z.number().int(),
+    teamId: z.number().int().optional().nullable(),
+    coachId: z.number().int(),
+    type: z.enum(["TECHNICAL", "TACTICAL", "FITNESS", "RECOVERY"]).optional(),
+    duration: z.number().int().optional().nullable(),
+    intensity: z.number().int().min(0).max(10).optional().nullable(),
+    venue: z.string().optional().nullable(),
+    notes: z.string().optional().nullable(),
+});
+
+export const sessionUpdateSchema = z.object({
+    title: z.string().min(1).optional(),
+    date: z.string().optional(),
+    type: z.enum(["TECHNICAL", "TACTICAL", "FITNESS", "RECOVERY"]).optional(),
+    duration: z.number().int().optional().nullable(),
+    intensity: z.number().int().min(0).max(10).optional().nullable(),
+    status: z.enum(["PLANNED", "ONGOING", "COMPLETED", "CANCELLED"]).optional(),
+    venue: z.string().optional().nullable(),
+    notes: z.string().optional().nullable(),
+});
+
+export const participantCreateSchema = z.object({
+    playerId: z.number().int(),
+    role: z.string().optional().nullable(),
+    attendanceStatus: z.enum(["PENDING", "PRESENT", "ABSENT", "EXCUSED"]).optional(),
+    joinedAt: z.string().optional().nullable(),
+    notes: z.string().optional().nullable(),
+});
+
+export const participantUpdateSchema = z.object({
+    role: z.string().optional().nullable(),
+    attendanceStatus: z.enum(["PENDING", "PRESENT", "ABSENT", "EXCUSED"]).optional(),
+    joinedAt: z.string().optional().nullable(),
+    notes: z.string().optional().nullable(),
+});
+
+export type SessionCreateInput = z.infer<typeof sessionCreateSchema>;
+export type SessionUpdateInput = z.infer<typeof sessionUpdateSchema>;
+export type ParticipantCreateInput = z.infer<typeof participantCreateSchema>;
+export type ParticipantUpdateInput = z.infer<typeof participantUpdateSchema>;
