@@ -85,6 +85,28 @@ model Player {
   teamId  Int?
   team    Team?    @relation(fields: [teamId], references: [id])
   metrics Metric[]
+  phone        String?
+  address      String?
+  city         String?
+  country      String?
+  postalCode   String?
+  birthdate    DateTime?
+  nationality  String?
+
+  // Bio / physical
+  position           String?
+  secondaryPositions String[]
+  heightCm           Int?
+  weightKg           Int?
+  dominantFoot       DominantFoot?
+  bio                String?
+  attributes         Json?
+
+  // Metadata
+  isActive          Boolean           @default(true)
+  profileVisibility ProfileVisibility?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 }
 
 model Team {
@@ -95,6 +117,18 @@ model Team {
   coachId        Int
   coach          Coach        @relation(fields: [coachId], references: [id])
   players        Player[]
+}
+
+enum DominantFoot {
+  LEFT
+  RIGHT
+  BOTH
+}
+
+enum ProfileVisibility {
+  PUBLIC
+  INTERNAL
+  PRIVATE
 }
 
 model Session {
