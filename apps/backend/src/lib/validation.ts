@@ -81,3 +81,50 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type OrganizationInput = z.infer<typeof organizationSchema>;
 export type CoachProfileInput = z.infer<typeof coachProfileSchema>;
+
+/**
+ * Player create/update schemas
+ */
+export const playerCreateSchema = z.object({
+    userId: z.number().int(),
+    teamId: z.number().int().optional().nullable(),
+    phone: z.string().regex(phoneRegex, "Invalid phone number format").optional().nullable(),
+    address: z.string().optional().nullable(),
+    city: z.string().optional().nullable(),
+    country: z.string().optional().nullable(),
+    postalCode: z.string().optional().nullable(),
+    birthdate: z.string().optional().nullable(), // ISO date string
+    nationality: z.string().optional().nullable(),
+    position: z.string().optional().nullable(),
+    secondaryPositions: z.array(z.string()).optional().default([]),
+    heightCm: z.number().int().optional().nullable(),
+    weightKg: z.number().int().optional().nullable(),
+    dominantFoot: z.enum(["LEFT", "RIGHT", "BOTH"]).optional().nullable(),
+    bio: z.string().optional().nullable(),
+    attributes: z.record(z.string(), z.any()).optional().nullable(),
+    isActive: z.boolean().optional(),
+    profileVisibility: z.enum(["PUBLIC", "INTERNAL", "PRIVATE"]).optional().nullable(),
+});
+
+export const playerUpdateSchema = z.object({
+    teamId: z.number().int().optional().nullable(),
+    phone: z.string().regex(phoneRegex, "Invalid phone number format").optional().nullable(),
+    address: z.string().optional().nullable(),
+    city: z.string().optional().nullable(),
+    country: z.string().optional().nullable(),
+    postalCode: z.string().optional().nullable(),
+    birthdate: z.string().optional().nullable(),
+    nationality: z.string().optional().nullable(),
+    position: z.string().optional().nullable(),
+    secondaryPositions: z.array(z.string()).optional(),
+    heightCm: z.number().int().optional().nullable(),
+    weightKg: z.number().int().optional().nullable(),
+    dominantFoot: z.enum(["LEFT", "RIGHT", "BOTH"]).optional().nullable(),
+    bio: z.string().optional().nullable(),
+    attributes: z.record(z.string(), z.any()).optional().nullable(),
+    isActive: z.boolean().optional(),
+    profileVisibility: z.enum(["PUBLIC", "INTERNAL", "PRIVATE"]).optional().nullable(),
+});
+
+export type PlayerCreateInput = z.infer<typeof playerCreateSchema>;
+export type PlayerUpdateInput = z.infer<typeof playerUpdateSchema>;
