@@ -53,6 +53,20 @@ export const coachProfileSchema = z.object({
     licenseLevel: z.array(z.string()).optional().default([]),
 });
 
+/**
+ * Schema for Team creation and updates
+ */
+export const teamCreateSchema = z.object({
+    name: z.string().min(1, "Name must be at least 1 character"),
+    organizationId: z.number().int(),
+    coachId: z.number().int().optional(),
+});
+
+export const teamUpdateSchema = z.object({
+    name: z.string().min(1).optional(),
+    coachId: z.number().int().optional(),
+});
+
 export const loginSchema = z.object({
     email: z.string().email("Invalid email address").optional(),
     username: z.string().min(3).optional(),
