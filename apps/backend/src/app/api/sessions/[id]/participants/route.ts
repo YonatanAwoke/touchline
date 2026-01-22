@@ -1,14 +1,95 @@
 import { NextResponse } from "next/server";
 import prisma from "@touchline/database";
 import { requireAuth, requireRole } from "@/lib/security";
-import { participantCreateSchema, participantUpdateSchema } from "@/lib/validation";
+import { participantCreateSchema } from "@/lib/validation";
+
+/**
+ * @openapi
+ * /api/sessions/{id}/participants:
+ *   get:
+ *     summary: List participants for a session
+ *     tags:
+ *       - Sessions
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: integer
+ *         required: true
+ *         description: Session id
+ *     responses:
+ *       200:
+ *         description: Array of participants
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Session not found
+ *   post:
+ *     summary: Add a participant to a session
+ *     tags:
+ *       - Sessions
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: integer
+ *         required: true
+ *         description: Session id
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - one of: playerId, coachId, userId
+ *             properties:
+ *               playerId:
+ *                 type: integer
+ *               coachId:
+ *                 type: integer
+ *               userId:
+ *                 type: integer
+ *               role:
+ *                 type: string
+ *               attendanceStatus:
+ *                 type: string
+ *                 enum: [PENDING, PRESENT, ABSENT, EXCUSED]
+ *               joinedAt:
+ *                 type: string
+ *                 format: date-time
+ *               notes:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Participant created
+ *       400:
+ *         description: Validation failed / participant already exists
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Referenced player/coach/user not found or session not found
+ */
 
 export async function GET(request: Request, { params }: { params: { id: string } | Promise<{ id: string }> }) {
+    const auth = await requireAuth();
+    if (!auth.session) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const { session } = auth;
+
     const resolvedParams = await params as any;
     const sessionId = Number(resolvedParams.id);
 
     try {
-        const participants = await prisma.sessionParticipant.findMany({ where: { sessionId }, include: { player: { include: { user: { select: { id: true, email: true, username: true, role: true, organizationId: true } } } } } });
+        const targetSession = await prisma.session.findUnique({ where: { id: sessionId } });
+        if (!targetSession) return NextResponse.json({ error: "Session not found" }, { status: 404 });
+
+        if (session.role !== "SUPER_ADMIN" && session.organizationId !== targetSession.organizationId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+        const participants = await prisma.sessionParticipant.findMany({ where: { sessionId }, include: { player: { include: { user: { select: { id: true, email: true, username: true, role: true, organizationId: true } } } }, coach: { include: { user: { select: { id: true, email: true, username: true, role: true, organizationId: true } } } }, user: { select: { id: true, email: true, username: true, role: true, organizationId: true } } } });
         return NextResponse.json(participants);
     } catch (error) {
         console.error("List participants error:", error);
@@ -37,7 +118,10 @@ export async function POST(request: Request, { params }: { params: { id: string 
         }
 
         const result = participantCreateSchema.safeParse(body);
-        if (!result.success) return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
+        if (!result.success) {
+            const flat = result.error.flatten();
+            return NextResponse.json({ error: "Validation failed", details: { fieldErrors: flat.fieldErrors, formErrors: flat.formErrors } }, { status: 400 });
+        }
 
         const data = result.data;
 
@@ -48,13 +132,43 @@ export async function POST(request: Request, { params }: { params: { id: string 
         // permission: org-scoped
         if (session.role !== "SUPER_ADMIN" && session.organizationId !== targetSession.organizationId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-        // ensure player exists and belongs to org
-        const player = await prisma.player.findUnique({ where: { id: data.playerId }, include: { user: true } });
-        if (!player) return NextResponse.json({ error: "Player not found" }, { status: 404 });
-        if (player.user.organizationId !== targetSession.organizationId) return NextResponse.json({ error: "Player does not belong to organization" }, { status: 400 });
+        // determine actor type (player | coach | user(analyst)) and validate
+        const actor = (data.playerId ? { type: 'player', id: data.playerId } : data.coachId ? { type: 'coach', id: data.coachId } : { type: 'user', id: data.userId });
 
-        // create participant (unique constraint prevents duplicates)
-        const participant = await prisma.sessionParticipant.create({ data: { sessionId, playerId: data.playerId, role: data.role ?? undefined, attendanceStatus: data.attendanceStatus ?? undefined, joinedAt: data.joinedAt ? new Date(data.joinedAt) : undefined, notes: data.notes ?? undefined }, include: { player: { include: { user: { select: { id: true, email: true, username: true, role: true, organizationId: true } } } } } });
+        if (actor.type === 'player') {
+            const player = await prisma.player.findUnique({ where: { id: actor.id }, include: { user: true } });
+            if (!player) return NextResponse.json({ error: "Player not found" }, { status: 404 });
+            if (player.user.organizationId !== targetSession.organizationId) return NextResponse.json({ error: "Player does not belong to organization" }, { status: 400 });
+        } else if (actor.type === 'coach') {
+            const coach = await prisma.coach.findUnique({ where: { id: actor.id }, include: { user: true } });
+            if (!coach) return NextResponse.json({ error: "Coach not found" }, { status: 404 });
+            if (coach.user.organizationId !== targetSession.organizationId) return NextResponse.json({ error: "Coach does not belong to organization" }, { status: 400 });
+        } else {
+            const user = await prisma.user.findUnique({ where: { id: actor.id } });
+            if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+            if (user.organizationId !== targetSession.organizationId) return NextResponse.json({ error: "User does not belong to organization" }, { status: 400 });
+        }
+
+        // create participant (unique constraints per-type prevent duplicates)
+        const createData: any = {
+            sessionId,
+            role: data.role ?? undefined,
+            attendanceStatus: data.attendanceStatus ?? undefined,
+            joinedAt: data.joinedAt ? new Date(data.joinedAt) : undefined,
+            notes: data.notes ?? undefined,
+        };
+        if (actor.type === 'player') createData.playerId = actor.id;
+        if (actor.type === 'coach') createData.coachId = actor.id;
+        if (actor.type === 'user') createData.userId = actor.id;
+
+        const participant = await prisma.sessionParticipant.create({
+            data: createData,
+            include: {
+                player: { include: { user: { select: { id: true, email: true, username: true, role: true, organizationId: true } } } },
+                coach: { include: { user: { select: { id: true, email: true, username: true, role: true, organizationId: true } } } },
+                user: { select: { id: true, email: true, username: true, role: true, organizationId: true } }
+            }
+        });
 
         console.info("Event: ParticipantAdded", { participantId: participant.id, sessionId });
 
@@ -65,78 +179,6 @@ export async function POST(request: Request, { params }: { params: { id: string 
         if ((error as any)?.code === 'P2002') {
             return NextResponse.json({ error: 'Participant already exists for this session' }, { status: 400 });
         }
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-    }
-}
-
-export async function PATCH(request: Request, { params }: { params: { id: string, participantId?: string } | Promise<{ id: string, participantId?: string }> }) {
-    const auth = await requireAuth();
-    if (!auth.session) return NextResponse.json({ error: auth.error }, { status: auth.status });
-    const { session } = auth;
-
-    const resolvedParams = await params as any;
-    const sessionId = Number(resolvedParams.id);
-    const participantId = Number(resolvedParams.participantId);
-
-    const roleCheck = requireRole(["CLUB_ADMIN", "SUPER_ADMIN", "COACH"])(session);
-    if (roleCheck.error) return NextResponse.json({ error: roleCheck.error }, { status: roleCheck.status });
-
-    try {
-        let body;
-        try {
-            const text = await request.text();
-            body = text ? JSON.parse(text) : {};
-        } catch (e) {
-            return NextResponse.json({ error: "Invalid JSON input" }, { status: 400 });
-        }
-
-        const result = participantUpdateSchema.safeParse(body);
-        if (!result.success) return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
-
-        const existing = await prisma.sessionParticipant.findUnique({ where: { id: participantId }, include: { session: true } });
-        if (!existing) return NextResponse.json({ error: "Participant not found" }, { status: 404 });
-        if (existing.sessionId !== sessionId) return NextResponse.json({ error: "Participant does not belong to session" }, { status: 400 });
-
-        if (session.role !== "SUPER_ADMIN" && session.organizationId !== existing.session.organizationId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-        const updateData: any = {};
-        if (typeof result.data.role !== "undefined") updateData.role = result.data.role;
-        if (typeof result.data.attendanceStatus !== "undefined") updateData.attendanceStatus = result.data.attendanceStatus;
-        if (typeof result.data.joinedAt !== "undefined") updateData.joinedAt = result.data.joinedAt ? new Date(result.data.joinedAt) : null;
-        if (typeof result.data.notes !== "undefined") updateData.notes = result.data.notes;
-
-        const updated = await prisma.sessionParticipant.update({ where: { id: participantId }, data: updateData, include: { player: { include: { user: { select: { id: true, email: true, username: true, role: true, organizationId: true } } } } } });
-
-        return NextResponse.json(updated);
-    } catch (error) {
-        console.error("Update participant error:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-    }
-}
-
-export async function DELETE(request: Request, { params }: { params: { id: string, participantId?: string } | Promise<{ id: string, participantId?: string }> }) {
-    const auth = await requireAuth();
-    if (!auth.session) return NextResponse.json({ error: auth.error }, { status: auth.status });
-    const { session } = auth;
-
-    const resolvedParams = await params as any;
-    const sessionId = Number(resolvedParams.id);
-    const participantId = Number(resolvedParams.participantId);
-
-    const roleCheck = requireRole(["SUPER_ADMIN", "CLUB_ADMIN"])(session);
-    if (roleCheck.error) return NextResponse.json({ error: roleCheck.error }, { status: roleCheck.status });
-
-    try {
-        const existing = await prisma.sessionParticipant.findUnique({ where: { id: participantId }, include: { session: true } });
-        if (!existing) return NextResponse.json({ error: "Participant not found" }, { status: 404 });
-        if (existing.sessionId !== sessionId) return NextResponse.json({ error: "Participant does not belong to session" }, { status: 400 });
-
-        if (session.role !== "SUPER_ADMIN" && session.organizationId !== existing.session.organizationId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-        await prisma.sessionParticipant.delete({ where: { id: participantId } });
-        return new NextResponse(null, { status: 204 });
-    } catch (error) {
-        console.error("Delete participant error:", error);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }

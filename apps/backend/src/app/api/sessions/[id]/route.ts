@@ -109,7 +109,13 @@ export async function GET(request: Request, { params }: { params: { id: string }
         const session = await prisma.session.findUnique({
             where: { id },
             include: {
-                participants: { include: { player: { include: { user: { select: userSafeSelect } } } } },
+                participants: {
+                    include: {
+                        player: { include: { user: { select: userSafeSelect } } },
+                        coach: { include: { user: { select: userSafeSelect } } },
+                        user: { select: userSafeSelect }
+                    }
+                },
                 videos: { select: { id: true, url: true, status: true } },
                 coach: { include: { user: { select: userSafeSelect } } },
                 team: true,
