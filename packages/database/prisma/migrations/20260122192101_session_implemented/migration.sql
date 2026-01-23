@@ -10,6 +10,15 @@ CREATE TYPE "ProfileVisibility" AS ENUM ('PUBLIC', 'INTERNAL', 'PRIVATE');
 -- CreateEnum
 CREATE TYPE "VideoStatus" AS ENUM ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED');
 
+-- CreateEnum
+CREATE TYPE "SessionType" AS ENUM ('TECHNICAL', 'TACTICAL', 'FITNESS', 'RECOVERY');
+
+-- CreateEnum
+CREATE TYPE "SessionStatus" AS ENUM ('PLANNED', 'ONGOING', 'COMPLETED', 'CANCELLED');
+
+-- CreateEnum
+CREATE TYPE "AttendanceStatus" AS ENUM ('PENDING', 'PRESENT', 'ABSENT', 'EXCUSED');
+
 -- CreateTable
 CREATE TABLE "Organization" (
     "id" SERIAL NOT NULL,
@@ -113,8 +122,34 @@ CREATE TABLE "Session" (
     "date" TIMESTAMP(3) NOT NULL,
     "organizationId" INTEGER NOT NULL,
     "coachId" INTEGER NOT NULL,
+    "teamId" INTEGER,
+    "type" "SessionType" NOT NULL DEFAULT 'TECHNICAL',
+    "duration" INTEGER,
+    "intensity" INTEGER,
+    "status" "SessionStatus" NOT NULL DEFAULT 'PLANNED',
+    "venue" TEXT,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Session_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "SessionParticipant" (
+    "id" SERIAL NOT NULL,
+    "sessionId" INTEGER NOT NULL,
+    "playerId" INTEGER,
+    "coachId" INTEGER,
+    "userId" INTEGER,
+    "role" TEXT,
+    "attendanceStatus" "AttendanceStatus" NOT NULL DEFAULT 'PENDING',
+    "joinedAt" TIMESTAMP(3),
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "SessionParticipant_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -166,6 +201,15 @@ CREATE UNIQUE INDEX "Coach_userId_key" ON "Coach"("userId");
 -- CreateIndex
 CREATE UNIQUE INDEX "Player_userId_key" ON "Player"("userId");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "SessionParticipant_sessionId_playerId_key" ON "SessionParticipant"("sessionId", "playerId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "SessionParticipant_sessionId_coachId_key" ON "SessionParticipant"("sessionId", "coachId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "SessionParticipant_sessionId_userId_key" ON "SessionParticipant"("sessionId", "userId");
+
 -- AddForeignKey
 ALTER TABLE "User" ADD CONSTRAINT "User_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
@@ -192,6 +236,21 @@ ALTER TABLE "Session" ADD CONSTRAINT "Session_organizationId_fkey" FOREIGN KEY (
 
 -- AddForeignKey
 ALTER TABLE "Session" ADD CONSTRAINT "Session_coachId_fkey" FOREIGN KEY ("coachId") REFERENCES "Coach"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Session" ADD CONSTRAINT "Session_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SessionParticipant" ADD CONSTRAINT "SessionParticipant_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "Session"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SessionParticipant" ADD CONSTRAINT "SessionParticipant_playerId_fkey" FOREIGN KEY ("playerId") REFERENCES "Player"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SessionParticipant" ADD CONSTRAINT "SessionParticipant_coachId_fkey" FOREIGN KEY ("coachId") REFERENCES "Coach"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SessionParticipant" ADD CONSTRAINT "SessionParticipant_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Video" ADD CONSTRAINT "Video_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "Session"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

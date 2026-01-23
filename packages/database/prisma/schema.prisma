@@ -46,6 +46,7 @@ model User {
   coachProfile         Coach?
   playerProfile        Player?
   refreshTokens        RefreshToken[]
+  sessionParticipants  SessionParticipant[]
 }
 
 model RefreshToken {
@@ -74,6 +75,7 @@ model Coach {
   licenseLevel String[] // e.g., ["UEFA Pro", "AFC A"]
   teams        Team[]
   sessions     Session[]
+  sessionParticipants SessionParticipant[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -85,6 +87,7 @@ model Player {
   teamId  Int?
   team    Team?    @relation(fields: [teamId], references: [id])
   metrics Metric[]
+  sessionParticipants SessionParticipant[]
   phone        String?
   address      String?
   city         String?
@@ -117,6 +120,7 @@ model Team {
   coachId        Int
   coach          Coach        @relation(fields: [coachId], references: [id])
   players        Player[]
+  sessions       Session[]
 }
 
 enum DominantFoot {
@@ -140,6 +144,41 @@ model Session {
   coachId        Int
   coach          Coach        @relation(fields: [coachId], references: [id])
   videos         Video[]
+  teamId         Int?
+  team           Team?        @relation(fields: [teamId], references: [id])
+
+  type           SessionType  @default(TECHNICAL)
+  duration       Int?         // duration in minutes
+  intensity      Int?         // 1-10 scale
+  status         SessionStatus @default(PLANNED)
+  venue          String?
+  notes          String?
+
+  participants   SessionParticipant[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model SessionParticipant {
+  id              Int             @id @default(autoincrement())
+  sessionId       Int
+  session         Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  playerId        Int?
+  player          Player?         @relation(fields: [playerId], references: [id])
+  coachId         Int?
+  coach           Coach?          @relation(fields: [coachId], references: [id])
+  userId          Int?
+  user            User?           @relation(fields: [userId], references: [id])
+  role            String?
+  attendanceStatus AttendanceStatus @default(PENDING)
+  joinedAt        DateTime?
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([sessionId, playerId])
+  @@unique([sessionId, coachId])
+  @@unique([sessionId, userId])
 }
 
 model Video {
@@ -167,4 +206,25 @@ model Metric {
   videoId   Int?
   video     Video?   @relation(fields: [videoId], references: [id])
   createdAt DateTime @default(now())
+}
+
+enum SessionType {
+  TECHNICAL
+  TACTICAL
+  FITNESS
+  RECOVERY
+}
+
+enum SessionStatus {
+  PLANNED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PENDING
+  PRESENT
+  ABSENT
+  EXCUSED
 }

@@ -111,6 +111,11 @@ export async function POST(request: Request) {
         const targetUser = await prisma.user.findUnique({ where: { id: data.userId } });
         if (!targetUser) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
+        // only users with role PLAYER may have a player profile
+        if (targetUser.role !== "PLAYER") {
+            return NextResponse.json({ error: "User must have role=PLAYER to create a player profile" }, { status: 400 });
+        }
+
         if (session.role !== "SUPER_ADMIN" && targetUser.organizationId !== session.organizationId) {
             return NextResponse.json({ error: "Forbidden - user outside organization" }, { status: 403 });
         }
