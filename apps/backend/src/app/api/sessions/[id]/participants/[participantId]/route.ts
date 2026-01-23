@@ -64,7 +64,7 @@ import { participantUpdateSchema } from "@/lib/validation";
  *           type: integer
  *         required: true
  *     responses:
- *       204:
+ *       200:
  *         description: Participant removed
  */
 export async function PATCH(request: Request, { params }: { params: { id: string, participantId: string } | Promise<{ id: string, participantId: string }> }) {
@@ -132,7 +132,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
         if (session.role !== "SUPER_ADMIN" && session.organizationId !== existing.session.organizationId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
         await prisma.sessionParticipant.delete({ where: { id: participantId } });
-        return new NextResponse(null, { status: 204 });
+        return NextResponse.json({ message: 'Participant removed', participantId }, { status: 200 });
     } catch (error) {
         console.error("Delete participant error:", error);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });

@@ -157,17 +157,12 @@ export const sessionUpdateSchema = z.object({
 });
 
 export const participantCreateSchema = z.object({
-    playerId: z.number().int().optional(),
-    coachId: z.number().int().optional(),
-    userId: z.number().int().optional(),
+    playerId: z.number().int(),
     role: z.string().optional().nullable(),
     attendanceStatus: z.enum(["PENDING", "PRESENT", "ABSENT", "EXCUSED"]).optional(),
     joinedAt: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
-}).refine(data => {
-    const provided = [data.playerId ? 1 : 0, data.coachId ? 1 : 0, data.userId ? 1 : 0].reduce((a, b) => a + b, 0);
-    return provided === 1;
-}, { message: "Exactly one of playerId, coachId or userId must be provided" });
+});
 
 export const participantUpdateSchema = z.object({
     role: z.string().optional().nullable(),

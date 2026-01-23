@@ -92,6 +92,10 @@ import { sessionUpdateSchema } from "@/lib/validation";
  *         description: Not found
  */
 export async function GET(request: Request, { params }: { params: { id: string } | Promise<{ id: string }> }) {
+    const auth = await requireAuth();
+    if (!auth.session) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const { session } = auth;
+
     try {
         const resolvedParams = await params as any;
         const id = Number(resolvedParams.id);
@@ -106,7 +110,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
             updatedAt: true,
         };
 
-        const session = await prisma.session.findUnique({
+        const targetSession = await prisma.session.findUnique({
             where: { id },
             include: {
                 participants: {
@@ -122,9 +126,13 @@ export async function GET(request: Request, { params }: { params: { id: string }
             }
         });
 
-        if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 });
+        if (!targetSession) return NextResponse.json({ error: "Session not found" }, { status: 404 });
 
-        return NextResponse.json(session);
+        if (session.role !== "SUPER_ADMIN" && session.organizationId !== targetSession.organizationId) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
+        return NextResponse.json(targetSession);
     } catch (error) {
         console.error("Get session error:", error);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });

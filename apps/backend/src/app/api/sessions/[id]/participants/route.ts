@@ -48,10 +48,6 @@ import { participantCreateSchema } from "@/lib/validation";
  *             properties:
  *               playerId:
  *                 type: integer
- *               coachId:
- *                 type: integer
- *               userId:
- *                 type: integer
  *               role:
  *                 type: string
  *               attendanceStatus:
@@ -132,34 +128,20 @@ export async function POST(request: Request, { params }: { params: { id: string 
         // permission: org-scoped
         if (session.role !== "SUPER_ADMIN" && session.organizationId !== targetSession.organizationId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-        // determine actor type (player | coach | user(analyst)) and validate
-        const actor = (data.playerId ? { type: 'player', id: data.playerId } : data.coachId ? { type: 'coach', id: data.coachId } : { type: 'user', id: data.userId });
+        // Only players are allowed as participants now
+        const player = await prisma.player.findUnique({ where: { id: data.playerId }, include: { user: true } });
+        if (!player) return NextResponse.json({ error: "Player not found" }, { status: 404 });
+        if (player.user.organizationId !== targetSession.organizationId) return NextResponse.json({ error: "Player does not belong to organization" }, { status: 400 });
 
-        if (actor.type === 'player') {
-            const player = await prisma.player.findUnique({ where: { id: actor.id }, include: { user: true } });
-            if (!player) return NextResponse.json({ error: "Player not found" }, { status: 404 });
-            if (player.user.organizationId !== targetSession.organizationId) return NextResponse.json({ error: "Player does not belong to organization" }, { status: 400 });
-        } else if (actor.type === 'coach') {
-            const coach = await prisma.coach.findUnique({ where: { id: actor.id }, include: { user: true } });
-            if (!coach) return NextResponse.json({ error: "Coach not found" }, { status: 404 });
-            if (coach.user.organizationId !== targetSession.organizationId) return NextResponse.json({ error: "Coach does not belong to organization" }, { status: 400 });
-        } else {
-            const user = await prisma.user.findUnique({ where: { id: actor.id } });
-            if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
-            if (user.organizationId !== targetSession.organizationId) return NextResponse.json({ error: "User does not belong to organization" }, { status: 400 });
-        }
-
-        // create participant (unique constraints per-type prevent duplicates)
+        // create participant (player only)
         const createData: any = {
             sessionId,
+            playerId: data.playerId,
             role: data.role ?? undefined,
             attendanceStatus: data.attendanceStatus ?? undefined,
             joinedAt: data.joinedAt ? new Date(data.joinedAt) : undefined,
             notes: data.notes ?? undefined,
         };
-        if (actor.type === 'player') createData.playerId = actor.id;
-        if (actor.type === 'coach') createData.coachId = actor.id;
-        if (actor.type === 'user') createData.userId = actor.id;
 
         const participant = await prisma.sessionParticipant.create({
             data: createData,
