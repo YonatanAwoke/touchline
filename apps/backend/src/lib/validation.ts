@@ -209,17 +209,21 @@ export const matchResultSchema = z.object({
     const scoresMatchScorers = homeGoalsSum === data.homeScore && awayGoalsSum === data.awayScore;
     if (!scoresMatchScorers) return false;
 
-    // Penalties check: only if draw
-    const hasPenalties = (data.homePenalties !== undefined && data.homePenalties !== null) ||
-        (data.awayPenalties !== undefined && data.awayPenalties !== null);
+    // Penalties check:
+    const homePenProvided = data.homePenalties !== undefined && data.homePenalties !== null;
+    const awayPenProvided = data.awayPenalties !== undefined && data.awayPenalties !== null;
+    const hasShootout = homePenProvided || awayPenProvided;
 
-    if (hasPenalties && data.homeScore !== data.awayScore) {
-        return false;
+    if (hasShootout) {
+        // Shootout only allowed on draws
+        if (data.homeScore !== data.awayScore) return false;
+        // Both teams must have penalties recorded
+        if (!homePenProvided || !awayPenProvided) return false;
     }
 
     return true;
 }, {
-    message: "The sum of goals must match scores, and penalties are only allowed if the scores are a draw",
+    message: "The sum of goals must match scores, and a full penalty shootout (both scores) is only allowed if the match is a draw",
     path: ["scorers", "homePenalties", "awayPenalties"]
 });
 

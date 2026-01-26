@@ -177,12 +177,22 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
         if (!existing) return NextResponse.json({ error: "Match not found" }, { status: 404 });
 
-        if (session.role !== "SUPER_ADMIN" && session.role !== "CLUB_ADMIN") {
+        if (session.role === "SUPER_ADMIN") {
+            // allowed
+        } else if (session.role === "CLUB_ADMIN") {
+            if (session.organizationId !== existing.team.organizationId) {
+                return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+            }
+        } else if (session.role === "COACH" || session.role === "ANALYST") {
             // Check if coach is assigned to the team
             if (!session.coachId || session.coachId !== existing.team.coachId) {
                 return NextResponse.json({ error: "Forbidden" }, { status: 403 });
             }
-        } else if (session.role === "CLUB_ADMIN" && session.organizationId !== existing.team.organizationId) {
+            // Also verify organization just in case
+            if (session.organizationId !== existing.team.organizationId) {
+                return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+            }
+        } else {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
@@ -268,11 +278,20 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
 
         if (!existing) return NextResponse.json({ error: "Match not found" }, { status: 404 });
 
-        if (session.role !== "SUPER_ADMIN" && session.role !== "CLUB_ADMIN") {
+        if (session.role === "SUPER_ADMIN") {
+            // allowed
+        } else if (session.role === "CLUB_ADMIN") {
+            if (session.organizationId !== existing.team.organizationId) {
+                return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+            }
+        } else if (session.role === "COACH" || session.role === "ANALYST") {
             if (!session.coachId || session.coachId !== existing.team.coachId) {
                 return NextResponse.json({ error: "Forbidden" }, { status: 403 });
             }
-        } else if (session.role === "CLUB_ADMIN" && session.organizationId !== existing.team.organizationId) {
+            if (session.organizationId !== existing.team.organizationId) {
+                return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+            }
+        } else {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
