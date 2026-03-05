@@ -39,6 +39,7 @@ export async function GET() {
                         id: true,
                         email: true,
                         username: true,
+                        organizationId: true,
                     }
                 },
                 _count: {

@@ -88,11 +88,11 @@ export async function POST(request: Request) {
         if (existing) return NextResponse.json({ error: "Team with this name already exists in organization" }, { status: 409 });
 
         const team = await prisma.team.create({
-            data: ({ 
+            data: {
                 name,
-                organizationId,
-                ...(coachId !== undefined ? { coachId } : {})
-            } as any)
+                organization: { connect: { id: organizationId } },
+                ...(coachId !== undefined ? { coach: { connect: { id: coachId } } } : {}),
+            } as any
         });
 
         return NextResponse.json(team, { status: 201 });

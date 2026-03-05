@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import prisma from "@touchline/database";
 import { requireAuth, requireRole } from "@/lib/security";
-import { playerCreateSchema } from "@/lib/validation";
+import { playerCreatePayloadSchema } from "@/lib/validation";
+import bcrypt from "bcryptjs";
 
 /**
  * @openapi
@@ -102,13 +103,47 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Invalid JSON input" }, { status: 400 });
         }
 
-        const result = playerCreateSchema.safeParse(body);
+        const result = playerCreatePayloadSchema.safeParse(body);
         if (!result.success) return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
 
         const data = result.data;
 
-        // verify user exists
-        const targetUser = await prisma.user.findUnique({ where: { id: data.userId } });
+        let userIdToUse: number | null = null;
+
+        // If createUser provided, create the user first (register flow)
+        if (data.createUser) {
+            const { email, username, password, organizationSlug, joinCode } = data.createUser;
+
+            // find organization
+            const org = await prisma.organization.findUnique({ where: { slug: organizationSlug } });
+            if (!org) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+            if (org.joinCode !== joinCode) return NextResponse.json({ error: "Invalid join code for this organization" }, { status: 400 });
+
+            // check existing user
+            const existing = await prisma.user.findFirst({ where: { OR: [{ email }, { username }] } });
+            if (existing) return NextResponse.json({ error: "Email or username already in use" }, { status: 400 });
+
+            const hashedPassword = await bcrypt.hash(password, 10);
+            const createdUser = await prisma.user.create({
+                data: {
+                    email,
+                    username,
+                    password: hashedPassword,
+                    role: "PLAYER",
+                    organizationId: org.id
+                }
+            });
+
+            userIdToUse = createdUser.id;
+        } else if (data.userId) {
+            // use existing user
+            userIdToUse = data.userId;
+        } else {
+            return NextResponse.json({ error: "Either userId or createUser must be provided" }, { status: 400 });
+        }
+
+        // verify user exists now
+        const targetUser = await prisma.user.findUnique({ where: { id: userIdToUse! } });
         if (!targetUser) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
         // only users with role PLAYER may have a player profile
@@ -128,11 +163,11 @@ export async function POST(request: Request) {
         }
 
         // ensure player profile doesn't already exist
-        const existing = await prisma.player.findUnique({ where: { userId: data.userId } });
-        if (existing) return NextResponse.json({ error: "Player profile already exists for this user" }, { status: 400 });
+        const existingPlayer = await prisma.player.findUnique({ where: { userId: userIdToUse! } });
+        if (existingPlayer) return NextResponse.json({ error: "Player profile already exists for this user" }, { status: 400 });
 
         const createData: any = {
-            userId: data.userId,
+            userId: userIdToUse,
             teamId: data.teamId ?? undefined,
             phone: data.phone ?? undefined,
             address: data.address ?? undefined,

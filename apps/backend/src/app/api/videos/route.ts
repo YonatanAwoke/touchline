@@ -1,48 +1,208 @@
-import { NextResponse } from 'next/server';
-import prisma from '@touchline/database';
+import { NextResponse } from "next/server";
+import prisma from "@touchline/database";
+import { requireAuth } from "@/lib/security";
+import { videoCreateSchema } from "@/lib/validation";
 
+/**
+ * @openapi
+ * /api/videos:
+ *   post:
+ *     summary: Create a new video
+ *     tags:
+ *       - Videos
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - storagePath
+ *             properties:
+ *               storagePath:
+ *                 type: string
+ *               originalName:
+ *                 type: string
+ *               type:
+ *                 type: string
+ *                 enum: [TRAINING, MATCH, OTHER]
+ *               status:
+ *                 type: string
+ *                 enum: [PENDING, PROCESSING, COMPLETED, FAILED]
+ *               durationSec:
+ *                 type: integer
+ *               fps:
+ *                 type: integer
+ *               width:
+ *                 type: integer
+ *               height:
+ *                 type: integer
+ *               sessionId:
+ *                 type: integer
+ *               matchId:
+ *                 type: integer
+ *     responses:
+ *       201:
+ *         description: Video created successfully
+ *       400:
+ *         description: Validation failed
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       500:
+ *         description: Internal server error
+ */
 export async function POST(request: Request) {
-    try {
-        const body = await request.json();
-        const { sessionId, videoUrl } = body;
+    const auth = await requireAuth();
+    if (!auth.session) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const { session } = auth;
 
-        if (!sessionId || !videoUrl) {
-            return NextResponse.json(
-                { error: 'Missing required fields' },
-                { status: 400 }
-            );
+    try {
+        let body;
+        try {
+            const text = await request.text();
+            body = text ? JSON.parse(text) : {};
+        } catch (e) {
+            return NextResponse.json({ error: "Invalid JSON input" }, { status: 400 });
         }
 
-        // 1. Create a video record in the database with PENDING status
+        const result = videoCreateSchema.safeParse(body);
+        if (!result.success) return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
+
+        const data = result.data;
+
+        // Auto-infer organizationId from session
+        const organizationId = session.organizationId;
+        if (!organizationId) {
+            return NextResponse.json({ error: "User must belong to an organization" }, { status: 400 });
+        }
+
+        // Verify session/match if provided
+        if (data.sessionId) {
+            const sessionExists = await prisma.session.findUnique({ where: { id: data.sessionId } });
+            if (!sessionExists) return NextResponse.json({ error: "Session not found" }, { status: 404 });
+            if (session.role !== "SUPER_ADMIN" && sessionExists.organizationId !== session.organizationId) {
+                return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+            }
+        }
+
+        if (data.matchId) {
+            const match = await prisma.match.findUnique({ where: { id: data.matchId }, include: { team: true } });
+            if (!match) return NextResponse.json({ error: "Match not found" }, { status: 404 });
+            if (session.role !== "SUPER_ADMIN" && match.team.organizationId !== session.organizationId) {
+                return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+            }
+        }
+
+        // Normalize foreign keys: treat 0 as null
+        const sessionId = data.sessionId && data.sessionId > 0 ? data.sessionId : null;
+        const matchId = data.matchId && data.matchId > 0 ? data.matchId : null;
+
         const video = await prisma.video.create({
             data: {
-                sessionId,
-                url: videoUrl,
-                status: 'PENDING',
+                storagePath: data.storagePath,
+                originalName: data.originalName,
+                type: data.type as any,
+                status: data.status as any,
+                durationSec: data.durationSec,
+                fps: data.fps,
+                width: data.width,
+                height: data.height,
+                organizationId: organizationId,
+                sessionId: sessionId,
+                matchId: matchId,
             },
         });
 
-        // 2. Trigger the AI pipeline (Simulated with a detached child process for now)
-        // In a real production app, use a queue like BullMQ or a separate worker
-        import('child_process').then(({ spawn }) => {
-            const pythonProcess = spawn('python3', [
-                '../../services/ai-pipeline/processor.py',
-                video.id,
-                videoUrl
-            ]);
-
-            pythonProcess.unref(); // Allow the parent process to exit independently
-        });
-
-        return NextResponse.json({
-            message: 'Video upload initiated and processing started',
-            videoId: video.id,
-            status: 'PENDING',
-        });
+        return NextResponse.json(video, { status: 201 });
     } catch (error) {
-        return NextResponse.json(
-            { error: 'Failed to process request' },
-            { status: 500 }
-        );
+        console.error("Create video error:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+}
+
+/**
+ * @openapi
+ * /api/videos:
+ *   get:
+ *     summary: List videos
+ *     tags:
+ *       - Videos
+ *     parameters:
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [TRAINING, MATCH, OTHER]
+ *       - in: query
+ *         name: sessionId
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: matchId
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: skip
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: List of videos
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+export async function GET(request: Request) {
+    const auth = await requireAuth();
+    if (!auth.session) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const { session } = auth;
+
+    try {
+        const url = new URL(request.url);
+        const params = url.searchParams;
+        const skip = parseInt(params.get("skip") || "0", 10) || 0;
+        const take = Math.min(parseInt(params.get("limit") || "25", 10) || 25, 100);
+        const type = params.get("type");
+        const sessionId = params.get("sessionId");
+        const matchId = params.get("matchId");
+
+        const where: any = {};
+
+        // Scope to organization
+        if (session.role !== "SUPER_ADMIN") {
+            where.organizationId = session.organizationId;
+        }
+
+        if (type) where.type = type;
+        if (sessionId) where.sessionId = Number(sessionId);
+        if (matchId) where.matchId = Number(matchId);
+
+        const [items, total] = await prisma.$transaction([
+            prisma.video.findMany({
+                where,
+                include: {
+                    session: true,
+                    match: true,
+                    clips: true,
+                    analysisJobs: true,
+                },
+                skip,
+                take,
+                orderBy: { createdAt: 'desc' }
+            }),
+            prisma.video.count({ where })
+        ]);
+
+        return NextResponse.json({ items, total, skip, limit: take });
+    } catch (error) {
+        console.error("List videos error:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }

@@ -12,6 +12,7 @@ export async function middleware(request: NextRequest) {
     // 1. Allow public routes
     if (
         pathname.includes('/api/auth') ||
+        pathname.includes('/api/early-access') ||
         pathname.includes('/api/docs') ||
         pathname === '/'
     ) {

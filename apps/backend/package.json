@@ -9,11 +9,18 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "nodemailer": "^6.9.3",
     "@touchline/database": "workspace:*",
+    "@types/fluent-ffmpeg": "^2.1.28",
+    "@types/multer": "^2.0.0",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-react": "^5.18.0",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^5.67.1",
+    "fluent-ffmpeg": "^2.1.3",
+    "ioredis": "^5.9.2",
     "jose": "^6.1.3",
+    "multer": "^2.0.2",
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",

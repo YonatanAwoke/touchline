@@ -86,7 +86,7 @@ export type CoachProfileInput = z.infer<typeof coachProfileSchema>;
  * Player create/update schemas
  */
 export const playerCreateSchema = z.object({
-    userId: z.number().int(),
+    userId: z.number().int().optional(),
     teamId: z.number().int().optional().nullable(),
     phone: z.string().regex(phoneRegex, "Invalid phone number format").optional().nullable(),
     address: z.string().optional().nullable(),
@@ -104,6 +104,20 @@ export const playerCreateSchema = z.object({
     attributes: z.record(z.string(), z.any()).optional().nullable(),
     isActive: z.boolean().optional(),
     profileVisibility: z.enum(["PUBLIC", "INTERNAL", "PRIVATE"]).optional().nullable(),
+});
+
+export const createUserSchema = z.object({
+    email: z.string().email("Invalid email address"),
+    username: z.string().min(3, "Username must be at least 3 characters").max(20, "Username must be at most 20 characters"),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+    organizationSlug: z.string().min(1),
+    joinCode: z.string().min(1),
+    role: z.literal("PLAYER"),
+});
+
+// Allow player creation either by existing userId OR by providing a createUser payload
+export const playerCreatePayloadSchema = playerCreateSchema.extend({
+    createUser: createUserSchema.optional(),
 });
 
 export const playerUpdateSchema = z.object({
@@ -171,80 +185,35 @@ export const participantUpdateSchema = z.object({
     notes: z.string().optional().nullable(),
 });
 
+export type SessionCreateInput = z.infer<typeof sessionCreateSchema>;
+export type SessionUpdateInput = z.infer<typeof sessionUpdateSchema>;
+export type ParticipantCreateInput = z.infer<typeof participantCreateSchema>;
 export type ParticipantUpdateInput = z.infer<typeof participantUpdateSchema>;
 
 /**
- * Match schemas
+ * Video create schema
  */
-export const scorerSchema = z.object({
-    playerId: z.number().int().optional().nullable(),
-    playerName: z.string().optional().nullable(),
-    minute: z.string().regex(/^(\d{1,3})(?:\+(\d{1,2}))?$/, "Invalid minute format (e.g., '45', '45+2', '120+1')").optional().nullable(),
-    isHomeTeam: z.boolean().default(true),
-    goalCount: z.number().int().min(1).default(1),
-}).refine(data => {
-    if (data.isHomeTeam) return !!data.playerId;
-    return !!data.playerName;
-}, {
-    message: "Home scorers must have a playerId, away scorers must have a playerName",
-    path: ["playerId", "playerName"]
+export const videoCreateSchema = z.object({
+    storagePath: z.string().min(1),
+    originalName: z.string().optional().nullable(),
+    type: z.enum(["TRAINING", "MATCH", "OTHER"]).optional(),
+    status: z.enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED"]).optional(),
+    durationSec: z.number().int().optional().nullable(),
+    fps: z.number().int().optional().nullable(),
+    width: z.number().int().optional().nullable(),
+    height: z.number().int().optional().nullable(),
+    sessionId: z.number().int().optional().nullable(),
+    matchId: z.number().int().optional().nullable(),
 });
 
-export const matchResultSchema = z.object({
-    homeScore: z.number().int().min(0).default(0),
-    awayScore: z.number().int().min(0).default(0),
-    homePenalties: z.number().int().min(0).optional().nullable(),
-    awayPenalties: z.number().int().min(0).optional().nullable(),
-    details: z.string().optional().nullable(),
-    scorers: z.array(scorerSchema).optional().default([]),
-}).refine(data => {
-    const homeGoalsSum = data.scorers
-        .filter(s => s.isHomeTeam)
-        .reduce((sum, s) => sum + (s.goalCount || 0), 0);
+export type VideoCreateInput = z.infer<typeof videoCreateSchema>;
 
-    const awayGoalsSum = data.scorers
-        .filter(s => !s.isHomeTeam)
-        .reduce((sum, s) => sum + (s.goalCount || 0), 0);
-
-    const scoresMatchScorers = homeGoalsSum === data.homeScore && awayGoalsSum === data.awayScore;
-    if (!scoresMatchScorers) return false;
-
-    // Penalties check:
-    const homePenProvided = data.homePenalties !== undefined && data.homePenalties !== null;
-    const awayPenProvided = data.awayPenalties !== undefined && data.awayPenalties !== null;
-    const hasShootout = homePenProvided || awayPenProvided;
-
-    if (hasShootout) {
-        // Shootout only allowed on draws
-        if (data.homeScore !== data.awayScore) return false;
-        // Both teams must have penalties recorded
-        if (!homePenProvided || !awayPenProvided) return false;
-    }
-
-    return true;
-}, {
-    message: "The sum of goals must match scores, and a full penalty shootout (both scores) is only allowed if the match is a draw",
-    path: ["scorers", "homePenalties", "awayPenalties"]
+/**
+ * Analysis job create schema
+ */
+export const analysisJobCreateSchema = z.object({
+    videoId: z.number().int(),
+    modelVersion: z.string().min(1),
 });
 
-export const matchCreateSchema = z.object({
-    teamId: z.number().int(),
-    opponent: z.string().min(1),
-    competition: z.enum(["LEAGUE", "CUP", "FRIENDLY", "OTHER"]).optional().nullable(),
-    venue: z.string().optional().nullable(),
-    matchDate: z.string(), // ISO date
-    result: matchResultSchema.optional(),
-});
-
-export const matchUpdateSchema = z.object({
-    opponent: z.string().min(1).optional(),
-    competition: z.enum(["LEAGUE", "CUP", "FRIENDLY", "OTHER"]).optional().nullable(),
-    venue: z.string().optional().nullable(),
-    matchDate: z.string().optional(),
-    result: matchResultSchema.optional(),
-});
-
-export type MatchCreateInput = z.infer<typeof matchCreateSchema>;
-export type MatchUpdateInput = z.infer<typeof matchUpdateSchema>;
-export type MatchResultInput = z.infer<typeof matchResultSchema>;
-export type ScorerInput = z.infer<typeof scorerSchema>;
+export type AnalysisJobCreateInput = z.infer<typeof analysisJobCreateSchema>;
