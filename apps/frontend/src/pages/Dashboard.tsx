@@ -4,24 +4,13 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Users, Settings, ArrowUpRight, Trophy } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
-const statCards = [
-  { title: "Open Players", subtitle: "Number of players", value: 50 },
-  { title: "Open Clubs", subtitle: "Number of teams", value: 2 },
-  { title: "Open Organization", subtitle: "Number of Organization", value: 2 },
-  { title: "Open Coaches", subtitle: "Number of coaches", value: 4 },
-];
-
-const lastGames = [
-  { opponent: "Bole FC", result: "Win" as const },
-  { opponent: "Gerji FC", result: "Draw" as const },
-  { opponent: "Tulu Dimtu", result: "Loss" as const },
-];
-
-const resultColor = {
+const resultColor: Record<string, string> = {
   Win: "text-primary",
   Draw: "text-muted-foreground",
   Loss: "text-destructive",
+  Upcoming: "text-accent-foreground",
 };
 
 const Dashboard: React.FC = () => {
@@ -31,6 +20,42 @@ const Dashboard: React.FC = () => {
   const today = new Date().toLocaleDateString("en-US", {
     year: "numeric", month: "long", day: "numeric",
   });
+
+  // Fetch Dashboard Stats
+  const { data: stats } = useQuery({
+    queryKey: ["dashboard-stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/stats", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load stats");
+      return res.json();
+    }
+  });
+
+  // Fetch Last Three Games
+  const { data: matchesData } = useQuery({
+    queryKey: ["last-matches"],
+    queryFn: async () => {
+      const res = await fetch("/api/matches?limit=3", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load matches");
+      return res.json();
+    }
+  });
+  const lastGames = matchesData?.items ?? [];
+
+  const getMatchResult = (match: any) => {
+    if (!match.result) return "Upcoming";
+    const { homeScore, awayScore } = match.result;
+    if (homeScore > awayScore) return "Win";
+    if (homeScore < awayScore) return "Loss";
+    return "Draw";
+  };
+
+  const statCards = [
+    { title: "Total Players", subtitle: "Registered athletes", value: stats?.players ?? 0 },
+    { title: "Total Clubs", subtitle: "Number of teams", value: stats?.teams ?? 0 },
+    { title: "Total Organization", subtitle: "Active organizations", value: stats?.organizations ?? 0 },
+    { title: "Total Coaches", subtitle: "Assigned coaches", value: stats?.coaches ?? 0 },
+  ];
 
   return (
     <DashboardLayout title={`Welcome, ${displayUser.username || "User"}`} subtitle={today}>
@@ -58,7 +83,7 @@ const Dashboard: React.FC = () => {
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <h2 className="text-xl font-bold text-foreground">
-            Upcoming Schedule <span className="text-sm font-normal text-muted-foreground">(Monthly)</span>
+            Current Progress <span className="text-sm font-normal text-muted-foreground">(Monthly Activity)</span>
           </h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <Card className="border-border">
@@ -66,11 +91,11 @@ const Dashboard: React.FC = () => {
                 <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-secondary">
                   <Users size={20} className="text-muted-foreground" />
                 </div>
-                <h3 className="text-base font-semibold text-foreground">Training Session</h3>
+                <h3 className="text-base font-semibold text-foreground">Training Progress</h3>
                 <div className="mt-4">
                   <Progress value={20} className="h-2" />
                   <p className="mt-2 text-sm text-muted-foreground">
-                    <span className="font-semibold text-foreground">4</span>/20 Sessions
+                    <span className="font-semibold text-foreground">4</span>/20 Planned Sessions
                   </p>
                 </div>
               </CardContent>
@@ -78,13 +103,13 @@ const Dashboard: React.FC = () => {
             <Card className="border-border">
               <CardContent className="p-5">
                 <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-secondary">
-                  <Settings size={20} className="text-muted-foreground" />
+                  <Trophy size={20} className="text-muted-foreground" />
                 </div>
-                <h3 className="text-base font-semibold text-foreground">Match Day</h3>
+                <h3 className="text-base font-semibold text-foreground">Match Performance</h3>
                 <div className="mt-4">
                   <Progress value={40} className="h-2" />
                   <p className="mt-2 text-sm text-muted-foreground">
-                    <span className="font-semibold text-foreground">4</span>/10 Matches
+                    <span className="font-semibold text-foreground">4</span>/10 Completed Matches
                   </p>
                 </div>
               </CardContent>
@@ -93,17 +118,29 @@ const Dashboard: React.FC = () => {
         </div>
 
         <div>
-          <h2 className="text-xl font-bold text-foreground">Last Three Games</h2>
+          <h2 className="text-xl font-bold text-foreground">Recent Performance</h2>
           <Card className="mt-4 border-border">
             <CardContent className="flex flex-col gap-4 p-5">
-              {lastGames.map((game) => (
-                <div key={game.opponent} className="flex items-center gap-3">
-                  <Trophy size={18} className={resultColor[game.result]} />
-                  <span className="text-sm font-medium text-foreground">
-                    Vs {game.opponent} <span className={resultColor[game.result]}>({game.result})</span>
-                  </span>
-                </div>
-              ))}
+              {lastGames.length > 0 ? (
+                lastGames.map((game: any) => {
+                  const result = getMatchResult(game);
+                  return (
+                    <div key={game.id} className="flex items-center gap-3">
+                      <Trophy size={18} className={resultColor[result]} />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-foreground">
+                          Vs {game.opponent}
+                        </p>
+                        <p className={`text-xs ${resultColor[result]}`}>
+                          {result} {game.result ? `(${game.result.homeScore}-${game.result.awayScore})` : ""}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-sm text-muted-foreground">No recent matches found.</p>
+              )}
             </CardContent>
           </Card>
         </div>

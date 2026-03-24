@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChevronLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,9 @@ const CreatePlayer: React.FC = () => {
 
   return (
     <DashboardLayout title="Create Player" subtitle="Add a new player profile">
+      <div className="mb-4">
+        <Button variant="ghost" onClick={() => navigate(-1)} className="items-center gap-2"><ChevronLeft size={16} /> Back</Button>
+      </div>
       <Card className="max-w-2xl">
         <CardHeader>
           <CardTitle>Create Player</CardTitle>
@@ -65,7 +69,7 @@ const CreatePlayer: React.FC = () => {
           <CreateEntityForm
             entity="player"
             onCancel={() => navigate(-1)}
-            submitting={createMutation.isLoading}
+            submitting={createMutation.isPending}
             onSubmit={(payload) => createMutation.mutate(payload)}
           />
         </CardContent>

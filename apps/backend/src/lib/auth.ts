@@ -10,7 +10,7 @@ export async function signJWT(payload: any) {
     return await new SignJWT(payload)
         .setProtectedHeader({ alg: "HS256" })
         .setIssuedAt()
-        .setExpirationTime("15m") // Short-lived access token
+        .setExpirationTime("1d") // Longer-lived token for dev
         .sign(secret);
 }
 

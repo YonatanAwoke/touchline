@@ -95,7 +95,7 @@ export const playerCreateSchema = z.object({
     postalCode: z.string().optional().nullable(),
     birthdate: z.string().optional().nullable(), // ISO date string
     nationality: z.string().optional().nullable(),
-    position: z.string().optional().nullable(),
+    position: z.enum(["GK","CB","LB","RB","LWB","RWB","DM","CM","AM","LM","RM","LW","RW","ST","CF"]).optional().nullable(),
     secondaryPositions: z.array(z.string()).optional().default([]),
     heightCm: z.number().int().optional().nullable(),
     weightKg: z.number().int().optional().nullable(),
@@ -112,7 +112,7 @@ export const createUserSchema = z.object({
     password: z.string().min(8, "Password must be at least 8 characters"),
     organizationSlug: z.string().min(1),
     joinCode: z.string().min(1),
-    role: z.literal("PLAYER"),
+    role: z.enum(["PLAYER", "COACH"]),
 });
 
 // Allow player creation either by existing userId OR by providing a createUser payload
@@ -129,7 +129,7 @@ export const playerUpdateSchema = z.object({
     postalCode: z.string().optional().nullable(),
     birthdate: z.string().optional().nullable(),
     nationality: z.string().optional().nullable(),
-    position: z.string().optional().nullable(),
+    position: z.enum(["GK","CB","LB","RB","LWB","RWB","DM","CM","AM","LM","RM","LW","RW","ST","CF"]).optional().nullable(),
     secondaryPositions: z.array(z.string()).optional(),
     heightCm: z.number().int().optional().nullable(),
     weightKg: z.number().int().optional().nullable(),
@@ -217,3 +217,45 @@ export const analysisJobCreateSchema = z.object({
 });
 
 export type AnalysisJobCreateInput = z.infer<typeof analysisJobCreateSchema>;
+
+/**
+ * Match schemas
+ */
+export const scorerSchema = z.object({
+    playerId: z.number().int().optional().nullable(),
+    playerName: z.string().optional().nullable(),
+    minute: z.string().optional().nullable(),
+    isHomeTeam: z.boolean().default(true),
+    goalCount: z.number().int().default(1),
+});
+
+export const matchResultSchema = z.object({
+    homeScore: z.number().int().default(0),
+    awayScore: z.number().int().default(0),
+    homePenalties: z.number().int().optional().nullable(),
+    awayPenalties: z.number().int().optional().nullable(),
+    details: z.string().optional().nullable(),
+    scorers: z.array(scorerSchema).default([]),
+});
+
+export const matchCreateSchema = z.object({
+    teamId: z.number().int(),
+    opponent: z.string().min(1),
+    matchDate: z.string(), // ISO date
+    competition: z.enum(["LEAGUE", "CUP", "FRIENDLY", "OTHER"]).optional(),
+    venue: z.string().optional().nullable(),
+    result: matchResultSchema.optional(),
+});
+
+export const matchUpdateSchema = z.object({
+    opponent: z.string().min(1).optional(),
+    matchDate: z.string().optional(),
+    competition: z.enum(["LEAGUE", "CUP", "FRIENDLY", "OTHER"]).optional(),
+    venue: z.string().optional().nullable(),
+    result: matchResultSchema.optional(),
+});
+
+export type MatchCreateInput = z.infer<typeof matchCreateSchema>;
+export type MatchUpdateInput = z.infer<typeof matchUpdateSchema>;
+export type MatchResultInput = z.infer<typeof matchResultSchema>;
+export type ScorerInput = z.infer<typeof scorerSchema>;

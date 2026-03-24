@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import prisma from "@touchline/database";
 import { requireAuth, requireRole } from "@/lib/security";
-import { coachProfileSchema } from "@/lib/validation";
+import { coachProfileSchema, createUserSchema } from "@/lib/validation";
+import bcrypt from "bcryptjs";
 
 /**
  * @openapi
@@ -111,26 +112,54 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Invalid JSON input" }, { status: 400 });
         }
 
-        const result = coachProfileSchema.safeParse(body);
-        if (!result.success) {
+        // First try to parse coach fields
+        const coachResult = coachProfileSchema.safeParse(body);
+        if (!coachResult.success) {
             return NextResponse.json(
-                { error: "Validation failed", details: result.error.flatten().fieldErrors },
+                { error: "Validation failed", details: coachResult.error.flatten().fieldErrors },
                 { status: 400 }
             );
         }
 
-        const { userId, bio, specialty, licenseLevel } = result.data;
+        const coachData = coachResult.data;
 
-        if (!userId) {
-            return NextResponse.json({ error: "userId is required" }, { status: 400 });
+        // If the client provided a createUser block, validate and create the user first
+        let userIdToUse: number | null = null;
+        if ((body as any).createUser) {
+            const userResult = createUserSchema.safeParse((body as any).createUser);
+            if (!userResult.success) return NextResponse.json({ error: "Invalid createUser payload", details: userResult.error.flatten().fieldErrors }, { status: 400 });
+
+            const { email, username, password, organizationSlug, joinCode, role } = userResult.data;
+
+            // find organization
+            const org = await prisma.organization.findUnique({ where: { slug: organizationSlug } });
+            if (!org) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+            if (org.joinCode !== joinCode) return NextResponse.json({ error: "Invalid join code for this organization" }, { status: 400 });
+
+            // check existing user
+            const existing = await prisma.user.findFirst({ where: { OR: [{ email }, { username }] } });
+            if (existing) return NextResponse.json({ error: "Email or username already in use" }, { status: 400 });
+
+            const hashedPassword = await bcrypt.hash(password, 10);
+            const createdUser = await prisma.user.create({
+                data: {
+                    email,
+                    username,
+                    password: hashedPassword,
+                    role: role,
+                    organizationId: org.id
+                }
+            });
+
+            userIdToUse = createdUser.id;
+        } else {
+            userIdToUse = coachData.userId ?? null;
         }
 
-        // Verify user exists, belongs to org, and has COACH role
-        const targetUser = await prisma.user.findUnique({
-            where: { id: userId },
-            include: { coachProfile: true }
-        });
+        if (!userIdToUse) return NextResponse.json({ error: "userId is required" }, { status: 400 });
 
+        // Verify user exists, belongs to org, and has COACH role
+        const targetUser = await prisma.user.findUnique({ where: { id: userIdToUse }, include: { coachProfile: true } });
         if (!targetUser) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
@@ -147,15 +176,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Coach profile already exists for this user" }, { status: 400 });
         }
 
-        const coach = await prisma.coach.create({
-            data: {
-                userId,
-                bio,
-                specialty,
-                licenseLevel
-            }
-        });
-
+        const coach = await prisma.coach.create({ data: { userId: userIdToUse, bio: coachData.bio, specialty: coachData.specialty, licenseLevel: coachData.licenseLevel } });
         return NextResponse.json(coach, { status: 201 });
     } catch (error) {
         console.error("Create coach profile error:", error);

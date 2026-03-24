@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { RippleLoader } from "@/components/ui/ripple-loader";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +15,9 @@ import {
   Plus,
   X,
   MoreHorizontal,
+  LayoutGrid,
+  ChevronRight,
+  Eye,
 } from "lucide-react";
 import {
   Table,
@@ -41,6 +45,19 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
+import FormationDesigner, { FormationDesignerHandle } from "@/components/FormationDesigner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+import EditClubForm from "@/components/EditClubForm";
 
 const statCards = [
   { label: "Total Clubs", value: 0, icon: Shield },
@@ -53,14 +70,26 @@ const Clubs: React.FC = () => {
   const [selectedClub, setSelectedClub] = useState<ClubType | null>(null);
   const [editingClub, setEditingClub] = useState<ClubType | null>(null);
   const [confirmDeleteClub, setConfirmDeleteClub] = useState<ClubType | null>(null);
+  const [showFormationDialog, setShowFormationDialog] = useState(false);
+  const [formationName, setFormationName] = useState("");
+  const [formationClubId, setFormationClubId] = useState("");
+  const [formationCreated, setFormationCreated] = useState(false);
+  const [viewingFormationsClub, setViewingFormationsClub] = useState<ClubType | null>(null);
+  const [selectedFormationId, setSelectedFormationId] = useState<string | null>(null);
+  const [confirmDeleteFormation, setConfirmDeleteFormation] = useState<any | null>(null);
+  const formationRef = React.useRef<FormationDesignerHandle>(null);
+  const editFormationRef = React.useRef<FormationDesignerHandle>(null);
+
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data, isLoading } = useQuery({ queryKey: ["teams"], queryFn: async () => {
-    const res = await fetch("/api/teams?limit=100", { credentials: "include" });
-    if (!res.ok) throw new Error("Failed to load teams");
-    return res.json();
-  }});
+  const { data, isLoading } = useQuery({
+    queryKey: ["teams"], queryFn: async () => {
+      const res = await fetch("/api/teams?limit=100", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load teams");
+      return res.json();
+    }
+  });
 
   const teams = data?.items ?? [];
 
@@ -94,9 +123,70 @@ const Clubs: React.FC = () => {
     }
   });
 
-  const onSaveEdit = async (payload: any) => {
-    await updateMutation.mutateAsync(payload);
-    setEditingClub(null);
+  const { data: formationsData, isLoading: isLoadingFormations } = useQuery({
+    queryKey: ["formations", viewingFormationsClub?.id],
+    queryFn: async () => {
+      if (!viewingFormationsClub) return [];
+      const res = await fetch(`/api/formations?teamId=${viewingFormationsClub.id}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load formations");
+      return res.json();
+    },
+    enabled: !!viewingFormationsClub,
+  });
+
+  const formations = formationsData ?? [];
+  const currentFormation = selectedFormationId
+    ? formations.find((f: any) => String(f.id) === String(selectedFormationId))
+    : formations.find((f: any) => f.isActive) || formations[0];
+
+  const saveFormationMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await fetch("/api/formations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to save formation");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["formations"] });
+      toast({ title: "Formation saved successfully" });
+      setShowFormationDialog(false);
+      setFormationCreated(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error saving formation", description: err.message, variant: "destructive" });
+    }
+  });
+
+  const updateFormationMutation = useMutation({
+    mutationFn: async ({ id, ...payload }: any) => {
+      const res = await fetch(`/api/formations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update formation");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["formations"] });
+      toast({ title: "Formation updated" });
+    },
+  });
+
+  const handleCreateFormation = () => {
+    if (!formationRef.current) return;
+    const data = formationRef.current.getFormationData();
+    saveFormationMutation.mutate({
+      name: formationName,
+      teamId: Number(formationClubId),
+      template: data.template,
+      positions: data.positions,
+    });
   };
 
   const navigate = useNavigate();
@@ -104,8 +194,11 @@ const Clubs: React.FC = () => {
   return (
     <DashboardLayout title="Clubs" subtitle="Manage your clubs and teams">
       {/* Top action */}
-      <div className="flex justify-end mb-6">
-        <Button className="gap-2" onClick={() => navigate("/dashboard/create-club") }>
+      <div className="flex justify-end gap-3 mb-6">
+        <Button variant="outline" className="gap-2" onClick={() => { setShowFormationDialog(true); setFormationCreated(false); setFormationName(""); setFormationClubId(""); }}>
+          <LayoutGrid size={16} /> Create Formation
+        </Button>
+        <Button className="gap-2" onClick={() => navigate("/dashboard/create-club")}>
           <Plus size={16} /> Create Club
         </Button>
       </div>
@@ -185,6 +278,12 @@ const Clubs: React.FC = () => {
                         <DropdownMenuContent>
                           <DropdownMenuItem onSelect={(e) => setEditingClub(club)}>Edit</DropdownMenuItem>
                           <DropdownMenuSeparator />
+                          <DropdownMenuItem onSelect={(e) => {
+                            setViewingFormationsClub(club);
+                            setSelectedFormationId(null);
+                          }}>
+                            View Formation
+                          </DropdownMenuItem>
                           <DropdownMenuItem onSelect={(e) => setConfirmDeleteClub(club)}>Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -247,8 +346,8 @@ const Clubs: React.FC = () => {
                     </td>
                     <td className="py-3 text-foreground">
                       {selectedClub.players?.length > 0
-                        ? `${selectedClub.players.length} player(s)`
-                        : <span className="italic text-muted-foreground">No players yet</span>
+                         ? `${selectedClub.players.length} player(s)`
+                         : <span className="italic text-muted-foreground">No players yet</span>
                       }
                     </td>
                   </tr>
@@ -271,24 +370,19 @@ const Clubs: React.FC = () => {
 
       {/* Edit Club Dialog */}
       <Dialog open={!!editingClub} onOpenChange={(open) => !open && setEditingClub(null)}>
-        <DialogContent className="sm:max-w-lg animate-scale-in">
+        <DialogContent className="sm:max-max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Club</DialogTitle>
           </DialogHeader>
           {editingClub && (
-            <div className="space-y-4">
-              <div>
-                <Label>Name</Label>
-                <Input defaultValue={editingClub.name} id="club-name" />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setEditingClub(null)}>Cancel</Button>
-                <Button onClick={async () => {
-                  const name = (document.getElementById("club-name") as HTMLInputElement).value;
-                  await onSaveEdit({ id: editingClub.id, name });
-                }}>Save</Button>
-              </div>
-            </div>
+            <EditClubForm
+              clubId={editingClub.id}
+              onCancel={() => setEditingClub(null)}
+              onSave={async (payload) => {
+                await updateMutation.mutateAsync(payload);
+                setEditingClub(null);
+              }}
+            />
           )}
         </DialogContent>
       </Dialog>
@@ -310,6 +404,270 @@ const Clubs: React.FC = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Create Formation Dialog */}
+      <Dialog open={showFormationDialog} onOpenChange={(open) => { if (!open) setShowFormationDialog(false); }}>
+        <DialogContent className="sm:max-w-2xl animate-scale-in max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <LayoutGrid size={20} />
+              </div>
+              <DialogTitle className="text-xl text-foreground">Create Formation</DialogTitle>
+            </div>
+          </DialogHeader>
+
+          {!formationCreated ? (
+            <div className="space-y-4 mt-2">
+              <div>
+                <Label>Formation Name</Label>
+                <Input
+                  placeholder="e.g. Main Match Formation"
+                  value={formationName}
+                  onChange={(e) => setFormationName(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Select Club</Label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={formationClubId}
+                  onChange={(e) => setFormationClubId(e.target.value)}
+                >
+                  <option value="">Choose a club…</option>
+                  {teams.map((t: any) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setShowFormationDialog(false)}>Cancel</Button>
+                <Button
+                  disabled={!formationName.trim() || !formationClubId}
+                  onClick={() => setFormationCreated(true)}
+                >
+                  Continue
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 mt-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-semibold text-foreground">{formationName}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {teams.find((t: any) => String(t.id) === String(formationClubId))?.name ?? "Club"}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={saveFormationMutation.isPending}
+                  onClick={handleCreateFormation}
+                >
+                  {saveFormationMutation.isPending ? "Saving..." : "Save Formation"}
+                </Button>
+              </div>
+              <FormationDesigner
+                ref={formationRef}
+                players={
+                  (teams.find((t: any) => String(t.id) === String(formationClubId))?.players ?? []).map((p: any) => ({
+                    id: p.id,
+                    name: p.user?.username ?? p.name ?? `Player ${p.id}`,
+                    jerseyNumber: p.jerseyNumber ?? p.jersey_number,
+                    position: p.position,
+                  }))
+                }
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* View Formation Dialog */}
+      <Dialog open={!!viewingFormationsClub} onOpenChange={(open) => !open && setViewingFormationsClub(null)}>
+        <DialogContent className="sm:max-w-4xl animate-scale-in max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center justify-between pr-8">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                  <LayoutGrid size={20} />
+                </div>
+                <div>
+                  <DialogTitle className="text-xl text-foreground">
+                    {viewingFormationsClub?.name} Formations
+                  </DialogTitle>
+                  <p className="text-sm text-muted-foreground">Tactical layout and player assignments</p>
+                </div>
+              </div>
+              {formations.length > 0 && (
+                <div className="flex items-center gap-3">
+                  <Label className="text-sm font-medium">Select Formation:</Label>
+                  <select
+                    className="flex h-9 w-48 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    value={selectedFormationId || currentFormation?.id || ""}
+                    onChange={(e) => setSelectedFormationId(e.target.value)}
+                  >
+                    {formations.map((f: any) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name} {f.isActive ? "(Active)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {!currentFormation?.isActive && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => updateFormationMutation.mutate({ id: currentFormation.id, isActive: true })}
+                      disabled={updateFormationMutation.isPending && updateFormationMutation.variables?.isActive}
+                    >
+                      Set as Active
+                    </Button>
+                  )}
+                  {currentFormation && (
+                    <Button
+                      size="sm"
+                      disabled={updateFormationMutation.isPending && !updateFormationMutation.variables?.isActive}
+                      onClick={() => {
+                        if (!editFormationRef.current) return;
+                        const data = editFormationRef.current.getFormationData();
+                        const inputEl = document.getElementById("edit-formation-name") as HTMLInputElement;
+                        updateFormationMutation.mutate({
+                          id: currentFormation.id,
+                          name: inputEl ? inputEl.value : currentFormation.name,
+                          template: data.template,
+                          positions: data.positions
+                        });
+                      }}
+                    >
+                      {updateFormationMutation.isPending && !updateFormationMutation.variables?.isActive ? "Saving..." : "Save Changes"}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          </DialogHeader>
+
+          {isLoadingFormations ? (
+            <div className="flex items-center justify-center h-64">
+              <RippleLoader label="Loading formations..." />
+            </div>
+          ) : formations.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-xl border-border">
+              <LayoutGrid size={48} className="text-muted-foreground mb-4 opacity-20" />
+              <p className="text-muted-foreground mb-4 text-center">No formations created for this club yet.</p>
+              <Button onClick={() => {
+                setViewingFormationsClub(null);
+                setShowFormationDialog(true);
+                setFormationClubId(String(viewingFormationsClub?.id));
+                setFormationCreated(false);
+              }}>
+                <Plus size={16} className="mr-2" /> Create First Formation
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-4">
+              <div className="lg:col-span-2">
+                <FormationDesigner
+                  ref={editFormationRef}
+                  key={currentFormation?.id}
+                  initialData={{
+                    name: currentFormation?.template || "4-4-2",
+                    positions: currentFormation?.positions || []
+                  }}
+                  players={
+                    (viewingFormationsClub?.players ?? []).map((p: any) => ({
+                      id: p.id,
+                      name: p.user?.username ?? p.name ?? `Player ${p.id}`,
+                      jerseyNumber: p.jerseyNumber ?? p.jersey_number,
+                      position: p.position,
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader className="p-4">
+                    <CardTitle className="text-sm font-semibold">Formation Info</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-0 space-y-3">
+                    <div className="flex flex-col gap-1 text-sm mt-2">
+                      <span className="text-muted-foreground">Name:</span>
+                      <Input
+                        key={currentFormation?.id}
+                        id="edit-formation-name"
+                        defaultValue={currentFormation?.name}
+                        className="h-8"
+                      />
+                    </div>
+                    <div className="flex justify-between text-sm mt-2">
+                      <span className="text-muted-foreground">Template:</span>
+                      <Badge variant="secondary">{currentFormation?.template}</Badge>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Status:</span>
+                      <Badge className={currentFormation?.isActive ? "bg-primary/10 text-primary" : "bg-muted"}>
+                        {currentFormation?.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Players:</span>
+                      <span className="font-medium">
+                        {currentFormation?.positions?.filter((p: any) => p.playerId).length} / {currentFormation?.positions?.length}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+                <div className="flex flex-col gap-2">
+                  <Button variant="outline" className="w-full justify-start hover:bg-destructive/10 hover:text-destructive transition-colors" onClick={() => {
+                    setConfirmDeleteFormation(currentFormation);
+                  }}>
+                    <X size={16} className="mr-2 text-destructive" /> Delete Formation
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Formation Delete Confirmation */}
+      <AlertDialog 
+        open={!!confirmDeleteFormation} 
+        onOpenChange={(open) => !open && setConfirmDeleteFormation(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this formation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the formation
+              "{confirmDeleteFormation?.name}" and all its player assignments.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!confirmDeleteFormation) return;
+                const id = confirmDeleteFormation.id;
+                try {
+                  const res = await fetch(`/api/formations/${id}`, { method: "DELETE", credentials: "include" });
+                  if (!res.ok) throw new Error("Delete failed");
+                  queryClient.invalidateQueries({ queryKey: ["formations"] });
+                  toast({ title: "Formation deleted" });
+                  setSelectedFormationId(null);
+                  setConfirmDeleteFormation(null);
+                } catch (err: any) {
+                  toast({ title: "Error deleting formation", description: err.message, variant: "destructive" });
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 };

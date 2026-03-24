@@ -27,13 +27,16 @@ import {
   Bell,
   Building2,
   Shield,
+  Trophy,
 } from "lucide-react";
 
 const sidebarItems = [
   { icon: Home, label: "Home", path: "/dashboard" },
   { icon: Users, label: "Players", path: "/dashboard/players" },
   { icon: Shield, label: "Clubs", path: "/dashboard/clubs" },
+  { icon: Trophy, label: "Matches & Training", path: "/dashboard/matches-training" },
   { icon: Building2, label: "Organization", path: "/dashboard/organization" },
+  { icon: Users, label: "Coaches", path: "/dashboard/coaches" },
   { icon: Video, label: "Analysis", path: "/dashboard/analysis" },
   { icon: CalendarDays, label: "Schedule", path: "/dashboard/schedule" },
   { icon: Clock, label: "History", path: "/dashboard/history" },

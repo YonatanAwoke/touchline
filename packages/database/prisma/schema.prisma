@@ -99,7 +99,7 @@ model Player {
   nationality  String?
 
   // Bio / physical
-  position           String?
+  position           Position?
   secondaryPositions String[]
   heightCm           Int?
   weightKg           Int?
@@ -114,6 +114,25 @@ model Player {
   updatedAt         DateTime          @updatedAt
   scorers           Scorer[]
   videoClips        VideoClip[]
+  formationPositions FormationPosition[]
+}
+
+enum Position {
+  GK
+  CB
+  LB
+  RB
+  LWB
+  RWB
+  DM
+  CM
+  AM
+  LM
+  RM
+  LW
+  RW
+  ST
+  CF
 }
 
 model Team {
@@ -126,6 +145,7 @@ model Team {
   players        Player[]
   sessions       Session[]
   matches        Match[]
+  formations     Formation[]
 }
 
 enum DominantFoot {
@@ -379,4 +399,27 @@ enum AttendanceStatus {
   PRESENT
   ABSENT
   EXCUSED
+}
+
+model Formation {
+  id        Int                 @id @default(autoincrement())
+  name      String
+  template  String
+  teamId    Int
+  team      Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  isActive  Boolean             @default(false)
+  positions FormationPosition[]
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+}
+
+model FormationPosition {
+  id          Int       @id @default(autoincrement())
+  formationId Int
+  formation   Formation @relation(fields: [formationId], references: [id], onDelete: Cascade)
+  role        String
+  x           Float
+  y           Float
+  playerId    Int?
+  player      Player?   @relation(fields: [playerId], references: [id])
 }

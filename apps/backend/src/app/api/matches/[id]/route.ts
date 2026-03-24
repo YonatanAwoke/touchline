@@ -129,7 +129,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
                 team: true,
                 videos: true,
                 result: {
-                    include: { scorers: true }
+                    include: { 
+                        scorers: {
+                            include: { player: { include: { user: { select: { username: true } } } } }
+                        } 
+                    }
                 }
             }
         });
@@ -250,7 +254,11 @@ export async function PATCH(request: Request, { params }: { params: { id: string
             data: updateData,
             include: {
                 result: {
-                    include: { scorers: true }
+                    include: { 
+                        scorers: {
+                            include: { player: { include: { user: { select: { username: true } } } } }
+                        } 
+                    }
                 }
             }
         });

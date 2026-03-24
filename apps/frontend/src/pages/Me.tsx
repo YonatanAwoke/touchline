@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import useAuth from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import { RippleLoader } from "@/components/ui/ripple-loader";
 
 const Me: React.FC = () => {
   const { user, isLoading, logout } = useAuth();
@@ -13,7 +14,7 @@ const Me: React.FC = () => {
     }
   }, [user, isLoading, navigate]);
 
-  if (isLoading) return <div className="p-8">Loading...</div>;
+  if (isLoading) return <div className="flex items-center justify-center min-h-screen"><RippleLoader size="lg" label="Loading..." /></div>;
 
   if (!user) return null; // redirecting
 

@@ -40,6 +40,8 @@ const statCards = [
   { label: "Total Teams", value: 0, icon: Shield },
 ];
 
+import EditOrganizationForm from "@/components/EditOrganizationForm";
+
 type OrgType = any;
 
 const Organization: React.FC = () => {
@@ -82,11 +84,6 @@ const Organization: React.FC = () => {
     },
     onError: () => toast({ title: "Failed to update organization", variant: "destructive" })
   });
-
-  const onSaveEdit = async (payload: any) => {
-    await updateMutation.mutateAsync(payload);
-    setEditingOrg(null);
-  };
 
   const handleCopyJoinCode = (code: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -240,29 +237,19 @@ const Organization: React.FC = () => {
 
       {/* Edit Organization Dialog */}
       <Dialog open={!!editingOrg} onOpenChange={(open) => !open && setEditingOrg(null)}>
-        <DialogContent className="sm:max-w-lg animate-scale-in">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Organization</DialogTitle>
           </DialogHeader>
           {editingOrg && (
-            <div className="space-y-4">
-              <div>
-                <Label>Name</Label>
-                <Input defaultValue={editingOrg.name} id="org-name" />
-              </div>
-              <div>
-                <Label>Contact Email</Label>
-                <Input defaultValue={editingOrg.contactEmail || ""} id="org-email" />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setEditingOrg(null)}>Cancel</Button>
-                <Button onClick={async () => {
-                  const name = (document.getElementById("org-name") as HTMLInputElement).value;
-                  const contactEmail = (document.getElementById("org-email") as HTMLInputElement).value;
-                  await onSaveEdit({ id: editingOrg.id, name, contactEmail });
-                }}>Save</Button>
-              </div>
-            </div>
+            <EditOrganizationForm
+              orgId={editingOrg.id}
+              onCancel={() => setEditingOrg(null)}
+              onSave={async (payload) => {
+                await updateMutation.mutateAsync(payload);
+                setEditingOrg(null);
+              }}
+            />
           )}
         </DialogContent>
       </Dialog>

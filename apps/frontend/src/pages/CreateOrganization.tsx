@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import CreateEntityForm from "@/components/CreateEntityForm";
 import { useToast } from "@/components/ui/use-toast";
+import { ChevronLeft } from "lucide-react";
 
 const CreateOrganization: React.FC = () => {
   const [name, setName] = useState("");
@@ -44,6 +45,9 @@ const CreateOrganization: React.FC = () => {
 
   return (
     <DashboardLayout title="Create Organization" subtitle="Add a new organization">
+      <div className="mb-4">
+        <Button variant="ghost" onClick={() => navigate(-1)} className="items-center gap-2"><ChevronLeft size={16} /> Back</Button>
+      </div>
       <Card className="max-w-2xl">
         <CardHeader>
           <CardTitle>Create Organization</CardTitle>
@@ -52,7 +56,7 @@ const CreateOrganization: React.FC = () => {
           <CreateEntityForm
             entity="organization"
             onCancel={() => navigate(-1)}
-            submitting={createMutation.isLoading}
+            submitting={createMutation.isPending}
             onSubmit={(payload) => createMutation.mutate(payload)}
           />
         </CardContent>
