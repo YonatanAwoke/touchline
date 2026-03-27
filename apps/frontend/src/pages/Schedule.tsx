@@ -3,10 +3,9 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   ChevronLeft,
@@ -16,6 +15,8 @@ import {
   MapPin,
   CalendarDays,
   X,
+  Pencil,
+  Trash2
 } from "lucide-react";
 import {
   format,
@@ -31,7 +32,8 @@ import {
   isToday,
 } from "date-fns";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 type EventCategory = "match" | "training" | "meeting" | "other";
 
@@ -53,12 +55,6 @@ const categoryConfig: Record<EventCategory, { label: string; className: string; 
   other: { label: "Other", className: "bg-secondary text-secondary-foreground border-0", dot: "bg-muted-foreground" },
 };
 
-const todoItems = [
-  { id: 1, text: "Prepare match lineup", done: false },
-  { id: 2, text: "Review training footage", done: true },
-  { id: 3, text: "Update player fitness reports", done: false },
-];
-
 type ViewMode = "month" | "week" | "day";
 
 const hours = Array.from({ length: 16 }, (_, i) => i + 6); // 6 AM to 9 PM
@@ -69,7 +65,29 @@ const Schedule = () => {
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [showAddEvent, setShowAddEvent] = useState(false);
-  const [todos, setTodos] = useState(todoItems);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Todo State
+  const [newTodoText, setNewTodoText] = useState("");
+  const [editingTodoId, setEditingTodoId] = useState<number | null>(null);
+  const [editingTodoText, setEditingTodoText] = useState("");
+
+  // Form State
+  const [newEvent, setNewEvent] = useState({
+    title: "",
+    date: "",
+    startTime: "",
+    endTime: "",
+    location: "",
+    category: "training" as EventCategory,
+    teamId: "",
+    coachId: "",
+    opponent: "",
+    type: "TECHNICAL",
+  });
+
+  const [isRescheduling, setIsRescheduling] = useState(false);
 
   // Fetch Matches
   const { data: matchesData } = useQuery({
@@ -90,6 +108,229 @@ const Schedule = () => {
       return res.json();
     }
   });
+
+  // Fetch Teams
+  const { data: teamsData } = useQuery({
+    queryKey: ["teams"],
+    queryFn: async () => {
+      const res = await fetch("/api/teams", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load teams");
+      return res.json();
+    }
+  });
+  const teams = teamsData?.items ?? [];
+
+  // Fetch Coaches
+  const { data: coaches = [] } = useQuery({
+    queryKey: ["coaches"],
+    queryFn: async () => {
+      const res = await fetch("/api/coaches", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load coaches");
+      return res.json();
+    }
+  });
+
+  // Fetch Todos
+  const todosQuery = useQuery({
+    queryKey: ["todos", selectedEvent?.id],
+    queryFn: async () => {
+      let url = "/api/todos";
+      if (selectedEvent) {
+        const idStr = String(selectedEvent.id);
+        const id = idStr.split("-")[1];
+        if (idStr.startsWith("match")) {
+          url += `?matchId=${id}`;
+        } else if (idStr.startsWith("session")) {
+          url += `?sessionId=${id}`;
+        }
+      } else {
+        url += "?general=true";
+      }
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load todos");
+      const data = await res.json();
+      return data.items ?? [];
+    }
+  });
+
+  // Mutations
+  const createMatchMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await fetch("/api/matches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to create match");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["matches"] });
+      queryClient.invalidateQueries({ queryKey: ["last-matches"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      setShowAddEvent(false);
+      toast({ title: "Match created successfully" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" })
+  });
+
+  const createSessionMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to create session");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      setShowAddEvent(false);
+      toast({ title: "Session created successfully" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" })
+  });
+
+  const updateMatchMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: number; payload: any }) => {
+      const res = await fetch(`/api/matches/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update match");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["matches"] });
+      queryClient.invalidateQueries({ queryKey: ["last-matches"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      setIsRescheduling(false);
+      setSelectedEvent(null);
+      toast({ title: "Match rescheduled successfully" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" })
+  });
+
+  const updateSessionMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: number; payload: any }) => {
+      const res = await fetch(`/api/sessions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update session");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      setIsRescheduling(false);
+      setSelectedEvent(null);
+      toast({ title: "Session rescheduled successfully" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" })
+  });
+
+  const createTodoMutation = useMutation({
+    mutationFn: async (payload: { text: string; matchId?: number; sessionId?: number }) => {
+      const res = await fetch("/api/todos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to create todo");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["todos"] });
+      setNewTodoText("");
+    }
+  });
+
+  const toggleTodoMutation = useMutation({
+    mutationFn: async ({ id, done }: { id: number; done: boolean }) => {
+      const res = await fetch(`/api/todos/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ done }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update todo");
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["todos"] })
+  });
+
+  const updateTodoMutation = useMutation({
+    mutationFn: async ({ id, text }: { id: number; text: string }) => {
+      const res = await fetch(`/api/todos/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update todo");
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["todos"] })
+  });
+
+  const deleteTodoMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/todos/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete todo");
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["todos"] })
+  });
+
+  const handleCreateEvent = () => {
+    const dateTime = new Date(`${newEvent.date}T${newEvent.startTime || "00:00"}`);
+    if (newEvent.category === "match") {
+      createMatchMutation.mutate({
+        opponent: newEvent.opponent || newEvent.title,
+        matchDate: dateTime.toISOString(),
+        venue: newEvent.location,
+        teamId: Number(newEvent.teamId),
+        competition: "OTHER"
+      });
+    } else {
+      const selectedTeam = teams.find((t: any) => t.id === Number(newEvent.teamId));
+      createSessionMutation.mutate({
+        title: newEvent.title,
+        date: dateTime.toISOString(),
+        duration: 90,
+        type: newEvent.type,
+        teamId: Number(newEvent.teamId),
+        coachId: Number(newEvent.coachId),
+        organizationId: selectedTeam?.organizationId ?? (teams[0] as any)?.organizationId,
+        venue: newEvent.location,
+      });
+    }
+  };
+
+  const handleReschedule = () => {
+    if (!selectedEvent) return;
+    const dateTime = new Date(`${newEvent.date}T${newEvent.startTime || "00:00"}`);
+    const idStr = String(selectedEvent.id);
+    const id = Number(idStr.split("-")[1]);
+    if (idStr.startsWith("match")) {
+      updateMatchMutation.mutate({ id, payload: { matchDate: dateTime.toISOString(), venue: newEvent.location } });
+    } else {
+      updateSessionMutation.mutate({ id, payload: { date: dateTime.toISOString(), venue: newEvent.location } });
+    }
+  };
 
   const events: ScheduleEvent[] = useMemo(() => {
     const apiMatches = (matchesData?.items ?? []).map((m: any) => ({
@@ -152,7 +393,7 @@ const Schedule = () => {
     .filter((e) => isSameDay(e.date, selectedDate || currentDate))
     .sort((a, b) => a.time.localeCompare(b.time));
 
-  const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const weekDaysArr = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   const navigatePrev = () => {
     if (viewMode === "month") setCurrentDate(subMonths(currentDate, 1));
@@ -178,9 +419,7 @@ const Schedule = () => {
         {/* Main Calendar */}
         <Card className="border-border">
           <CardContent className="p-5">
-            {/* Header: View toggle + Navigation + Add */}
             <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-              {/* View Mode Toggle */}
               <div className="flex rounded-lg border border-border overflow-hidden">
                 {(["month", "week", "day"] as ViewMode[]).map((mode) => (
                   <button
@@ -197,7 +436,6 @@ const Schedule = () => {
                 ))}
               </div>
 
-              {/* Navigation */}
               <div className="flex items-center gap-2">
                 <span className="text-lg font-bold text-foreground">
                   {headerLabel}
@@ -221,10 +459,9 @@ const Schedule = () => {
               </Button>
             </div>
 
-            {/* Month View */}
             {viewMode === "month" && (
               <div className="grid grid-cols-7 gap-px rounded-lg border border-border overflow-hidden bg-border">
-                {weekDays.map((day) => (
+                {weekDaysArr.map((day) => (
                   <div
                     key={day}
                     className="bg-secondary px-2 py-2 text-center text-xs font-semibold text-muted-foreground"
@@ -272,10 +509,8 @@ const Schedule = () => {
               </div>
             )}
 
-            {/* Week View */}
             {viewMode === "week" && (
               <div className="rounded-lg border border-border overflow-hidden">
-                {/* Week header */}
                 <div className="grid grid-cols-[60px_repeat(7,1fr)] bg-secondary">
                   <div className="border-r border-border p-2" />
                   {weekDaysArray.map((day, i) => (
@@ -292,9 +527,7 @@ const Schedule = () => {
                     </div>
                   ))}
                 </div>
-                {/* Time grid */}
                 <div className="relative grid grid-cols-[60px_repeat(7,1fr)] bg-background">
-                  {/* Hour labels */}
                   <div className="border-r border-border">
                     {hours.map((hour) => (
                       <div key={hour} className="h-16 border-b border-border px-2 py-1 text-right">
@@ -304,7 +537,6 @@ const Schedule = () => {
                       </div>
                     ))}
                   </div>
-                  {/* Day columns */}
                   {weekDaysArray.map((day, dayIdx) => {
                     const dayEvents = getEventsForDay(day);
                     return (
@@ -339,10 +571,8 @@ const Schedule = () => {
               </div>
             )}
 
-            {/* Day View */}
             {viewMode === "day" && (
               <div className="rounded-lg border border-border overflow-hidden">
-                {/* Day header */}
                 <div className="grid grid-cols-[60px_1fr] bg-secondary">
                   <div className="border-r border-border p-2" />
                   <div className="p-3">
@@ -352,7 +582,6 @@ const Schedule = () => {
                     </p>
                   </div>
                 </div>
-                {/* Time grid */}
                 <div className="relative grid grid-cols-[60px_1fr] bg-background">
                   <div className="border-r border-border">
                     {hours.map((hour) => (
@@ -391,7 +620,6 @@ const Schedule = () => {
 
         {/* Right Sidebar */}
         <div className="flex flex-col gap-4">
-          {/* Selected Event Detail / Today's Events */}
           {selectedEvent ? (
             <Card className="border-border">
               <CardContent className="p-4">
@@ -426,7 +654,28 @@ const Schedule = () => {
                     </div>
                   )}
                 </div>
-                <Button variant="outline" size="sm" className="mt-4 w-full">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="mt-4 w-full"
+                  onClick={() => {
+                    const idStr = String(selectedEvent.id);
+                    setNewEvent({
+                      title: selectedEvent.title,
+                      date: format(selectedEvent.date, "yyyy-MM-dd"),
+                      startTime: selectedEvent.time,
+                      endTime: selectedEvent.endTime || "",
+                      location: selectedEvent.location || "",
+                      category: selectedEvent.category,
+                      teamId: "",
+                      coachId: "",
+                      opponent: idStr.startsWith("match") ? selectedEvent.title.replace("Vs ", "") : "",
+                      type: "TECHNICAL",
+                    });
+                    setIsRescheduling(true);
+                    setShowAddEvent(true);
+                  }}
+                >
                   Reschedule
                 </Button>
               </CardContent>
@@ -468,115 +717,243 @@ const Schedule = () => {
             </Card>
           )}
 
-          {/* Category Legend */}
-          <Card className="border-border">
-            <CardContent className="p-4">
-              <h3 className="text-sm font-bold text-foreground mb-3">Categories</h3>
-              <div className="flex flex-wrap gap-2">
-                {(Object.keys(categoryConfig) as EventCategory[]).map((cat) => (
-                  <Badge key={cat} className={categoryConfig[cat].className}>
-                    {categoryConfig[cat].label}
-                  </Badge>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
           {/* To Do List */}
           <Card className="border-border">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-foreground">To Do List</h3>
-                <button className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
-                  <Plus size={14} />
-                </button>
-              </div>
-              <div className="space-y-2.5">
-                {todos.map((todo) => (
-                  <label
-                    key={todo.id}
-                    className="flex items-center gap-2.5 cursor-pointer group"
-                  >
-                    <Checkbox
-                      checked={todo.done}
-                      onCheckedChange={(checked) =>
-                        setTodos((prev) =>
-                          prev.map((t) =>
-                            t.id === todo.id ? { ...t, done: !!checked } : t
-                          )
-                        )
-                      }
-                    />
-                    <span
-                      className={`text-sm transition-colors ${
-                        todo.done
-                          ? "text-muted-foreground line-through"
-                          : "text-foreground group-hover:text-primary"
-                      }`}
+                <div className="flex flex-col">
+                  <h3 className="text-sm font-bold text-foreground">
+                    {selectedEvent ? "Event To Do" : "General To Do"}
+                  </h3>
+                  {selectedEvent && (
+                    <button 
+                      onClick={() => setSelectedEvent(null)}
+                      className="text-[10px] text-primary hover:underline flex items-center gap-1"
                     >
-                      {todo.text}
-                    </span>
-                  </label>
-                ))}
+                      <X size={10} /> Back to General
+                    </button>
+                  )}
+                </div>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-6 w-6">
+                      <Plus size={14} />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Add To Do</DialogTitle>
+                      <DialogDescription>Add a new task to your list.</DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                      <Input
+                        placeholder="Task description..."
+                        value={newTodoText}
+                        onChange={(e) => setNewTodoText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const idStr = selectedEvent ? String(selectedEvent.id) : "";
+                            const id = idStr ? Number(idStr.split("-")[1]) : undefined;
+                            createTodoMutation.mutate({ 
+                              text: newTodoText,
+                              matchId: idStr.startsWith("match") ? id : undefined,
+                              sessionId: idStr.startsWith("session") ? id : undefined
+                            });
+                          }
+                        }}
+                      />
+                    </div>
+                    <DialogFooter>
+                      <Button 
+                        onClick={() => {
+                          const idStr = selectedEvent ? String(selectedEvent.id) : "";
+                          const id = idStr ? Number(idStr.split("-")[1]) : undefined;
+                          createTodoMutation.mutate({ 
+                            text: newTodoText,
+                            matchId: idStr.startsWith("match") ? id : undefined,
+                            sessionId: idStr.startsWith("session") ? id : undefined
+                          });
+                        }} 
+                        disabled={createTodoMutation.isPending || !newTodoText.trim()}
+                      >
+                        Add Task
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
+
+              {todosQuery.isLoading ? (
+                <p className="text-center py-4 text-xs text-muted-foreground">Loading...</p>
+              ) : (
+                <div className="space-y-2.5">
+                  {todosQuery.data?.map((todo: any) => (
+                    <div key={todo.id} className="flex items-center gap-2 group">
+                      <Checkbox
+                        checked={todo.done}
+                        onCheckedChange={(checked) => toggleTodoMutation.mutate({ id: todo.id, done: !!checked })}
+                      />
+                      {editingTodoId === todo.id ? (
+                        <Input
+                          autoFocus
+                          className="h-7 text-xs"
+                          value={editingTodoText}
+                          onChange={(e) => setEditingTodoText(e.target.value)}
+                          onBlur={() => {
+                            if (editingTodoText.trim() && editingTodoText !== todo.text) {
+                              updateTodoMutation.mutate({ id: todo.id, text: editingTodoText });
+                            }
+                            setEditingTodoId(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              updateTodoMutation.mutate({ id: todo.id, text: editingTodoText });
+                              setEditingTodoId(null);
+                            }
+                            if (e.key === "Escape") setEditingTodoId(null);
+                          }}
+                        />
+                      ) : (
+                        <span
+                          className={`flex-1 text-sm truncate transition-colors ${todo.done ? "text-muted-foreground line-through" : "text-foreground hover:text-primary cursor-pointer"}`}
+                          onClick={() => {
+                            setEditingTodoId(todo.id);
+                            setEditingTodoText(todo.text);
+                          }}
+                        >
+                          {todo.text}
+                        </span>
+                      )}
+                      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingTodoId(todo.id); setEditingTodoText(todo.text); }}>
+                          <Pencil size={12} />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => deleteTodoMutation.mutate(todo.id)}>
+                          <Trash2 size={12} />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {todosQuery.data?.length === 0 && (
+                    <p className="text-center py-4 text-xs text-muted-foreground">No tasks today</p>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
       </div>
 
       {/* Add Event Dialog */}
-      <Dialog open={showAddEvent} onOpenChange={setShowAddEvent}>
+      <Dialog open={showAddEvent} onOpenChange={(open) => { setShowAddEvent(open); if (!open) setIsRescheduling(false); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <CalendarDays size={20} />
               </div>
-              <DialogTitle className="text-foreground">Add Event</DialogTitle>
+              <DialogTitle className="text-foreground">{isRescheduling ? "Reschedule Event" : "Add Event"}</DialogTitle>
             </div>
           </DialogHeader>
           <div className="space-y-4 mt-2">
+            {!isRescheduling && (
+              <div>
+                <Label>Category</Label>
+                <div className="flex gap-2 mt-1">
+                  {(["training", "match"] as EventCategory[]).map((cat) => (
+                    <Button
+                      key={cat}
+                      variant={newEvent.category === cat ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1 capitalize"
+                      onClick={() => setNewEvent({ ...newEvent, category: cat })}
+                    >
+                      {cat}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
-              <Label>Event Title</Label>
-              <Input placeholder="e.g. Tactical Drills" />
+              <Label>{newEvent.category === "match" ? "Opponent" : "Event Title"}</Label>
+              <Input 
+                placeholder={newEvent.category === "match" ? "e.g. Real Madrid" : "e.g. Tactical Drills"} 
+                value={newEvent.category === "match" ? newEvent.opponent : newEvent.title}
+                onChange={(e) => {
+                  if (newEvent.category === "match") setNewEvent({...newEvent, opponent: e.target.value});
+                  else setNewEvent({...newEvent, title: e.target.value});
+                }}
+              />
             </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Team</Label>
+                <select 
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={newEvent.teamId}
+                  onChange={(e) => setNewEvent({...newEvent, teamId: e.target.value})}
+                >
+                  <option value="">Select Team</option>
+                  {teams.map((t: any) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+              {newEvent.category === "training" && (
+                <div>
+                  <Label>Coach</Label>
+                  <select 
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={newEvent.coachId}
+                    onChange={(e) => setNewEvent({...newEvent, coachId: e.target.value})}
+                  >
+                    <option value="">Select Coach</option>
+                    {coaches.map((c: any) => (
+                      <option key={c.id} value={c.id}>{c.user?.username || c.id}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Date</Label>
-                <Input type="date" />
+                <Input 
+                  type="date" 
+                  value={newEvent.date}
+                  onChange={(e) => setNewEvent({...newEvent, date: e.target.value})}
+                />
               </div>
-              <div>
-                <Label>Category</Label>
-                <Select>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="match">Match</SelectItem>
-                    <SelectItem value="training">Training</SelectItem>
-                    <SelectItem value="meeting">Meeting</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Start Time</Label>
-                <Input type="time" />
-              </div>
-              <div>
-                <Label>End Time</Label>
-                <Input type="time" />
+                <Input 
+                  type="time" 
+                  value={newEvent.startTime}
+                  onChange={(e) => setNewEvent({...newEvent, startTime: e.target.value})}
+                />
               </div>
             </div>
+
             <div>
               <Label>Location</Label>
-              <Input placeholder="e.g. Home Stadium" />
+              <Input 
+                placeholder="e.g. Home Stadium" 
+                value={newEvent.location}
+                onChange={(e) => setNewEvent({...newEvent, location: e.target.value})}
+              />
             </div>
+
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={() => setShowAddEvent(false)}>Cancel</Button>
-              <Button onClick={() => setShowAddEvent(false)}>Add Event</Button>
+              <Button variant="ghost" onClick={() => { setShowAddEvent(false); setIsRescheduling(false); }}>Cancel</Button>
+              <Button 
+                onClick={isRescheduling ? handleReschedule : handleCreateEvent}
+                disabled={createMatchMutation.isPending || createSessionMutation.isPending || updateMatchMutation.isPending || updateSessionMutation.isPending}
+              >
+                {isRescheduling ? "Update Event" : "Add Event"}
+              </Button>
             </div>
           </div>
         </DialogContent>

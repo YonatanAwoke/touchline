@@ -10,8 +10,18 @@ declare global {
 
 const prisma = globalThis.prisma ?? prismaClientSingleton()
 
-export default prisma
+if (process.env.NODE_ENV !== "production") {
+  // If the existing singleton is missing the new 'todo' model, recreate it
+  if (prisma && !(prisma as any).todo) {
+    console.warn("[Prisma] 'todo' model missing in client. Recreating...");
+    globalThis.prisma = prismaClientSingleton()
+  } else {
+    globalThis.prisma = prisma
+  }
+}
 
-if (process.env.NODE_ENV !== "production") globalThis.prisma = prisma
+const finalClient = globalThis.prisma ?? prisma
+
+export default finalClient
 
 export * from "./generated/client"

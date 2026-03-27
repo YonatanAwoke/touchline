@@ -17,6 +17,7 @@ export type AuthResult =
 
 export async function requireAuth(): Promise<AuthResult> {
     const session = await getSession() as any;
+    console.log("[AuthDebug] Session found:", !!session, "for path");
     if (!session) {
         return { error: "Unauthorized", status: 401 };
     }

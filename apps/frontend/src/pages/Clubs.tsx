@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { RippleLoader } from "@/components/ui/ripple-loader";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -16,8 +16,9 @@ import {
   X,
   MoreHorizontal,
   LayoutGrid,
-  ChevronRight,
   Eye,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import {
   Table,
@@ -189,6 +190,54 @@ const Clubs: React.FC = () => {
     });
   };
 
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" | null }>({
+    key: "id",
+    direction: "asc",
+  });
+
+  const sortedTeams = useMemo(() => {
+    if (!sortConfig.key || !sortConfig.direction) return teams;
+
+    return [...teams].sort((a: any, b: any) => {
+      let aValue: any;
+      let bValue: any;
+
+      if (sortConfig.key === "coach") {
+        aValue = a.coach?.user?.username || "";
+        bValue = b.coach?.user?.username || "";
+      } else if (sortConfig.key === "players") {
+        aValue = a.players?.length || 0;
+        bValue = b.players?.length || 0;
+      } else {
+        aValue = a[sortConfig.key];
+        bValue = b[sortConfig.key];
+      }
+
+      if (aValue < bValue) return sortConfig.direction === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortConfig.direction === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [teams, sortConfig]);
+
+  const handleSort = (key: string) => {
+    let direction: "asc" | "desc" | null = "asc";
+    if (sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
+    } else if (sortConfig.key === key && sortConfig.direction === "desc") {
+      direction = null;
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const SortIcon = ({ column }: { column: string }) => {
+    if (sortConfig.key !== column) return null;
+    return sortConfig.direction === "asc" ? (
+      <ChevronUp size={14} className="ml-1 inline" />
+    ) : (
+      <ChevronDown size={14} className="ml-1 inline" />
+    );
+  };
+
   const navigate = useNavigate();
 
   return (
@@ -231,17 +280,25 @@ const Clubs: React.FC = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">ID</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Coach</TableHead>
+                <TableHead className="w-10 cursor-pointer hover:text-primary" onClick={() => handleSort("id")}>
+                  ID <SortIcon column="id" />
+                </TableHead>
+                <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleSort("name")}>
+                  Name <SortIcon column="name" />
+                </TableHead>
+                <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleSort("coach")}>
+                  Coach <SortIcon column="coach" />
+                </TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Players</TableHead>
+                <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleSort("players")}>
+                  Players <SortIcon column="players" />
+                </TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(isLoading ? [] : teams).map((club: any) => (
+              {(isLoading ? [] : sortedTeams).map((club: any) => (
                 <TableRow key={club.id} className="transition-colors hover:bg-secondary/50">
                   <TableCell className="font-medium text-muted-foreground">{club.id}</TableCell>
                   <TableCell>

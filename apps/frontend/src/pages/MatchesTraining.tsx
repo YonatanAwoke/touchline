@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Trophy, Dumbbell, CalendarDays, MapPin, Clock, MoreHorizontal, Trash2, User, Trash } from "lucide-react";
+import { Plus, Trophy, Dumbbell, CalendarDays, MapPin, Clock, MoreHorizontal, Trash2, User, Trash, ChevronUp, ChevronDown } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/use-toast";
 import {
@@ -114,6 +114,61 @@ const MatchesTraining = () => {
       return res.json();
     }
   });
+
+  // Sorting State
+  const [matchSortConfig, setMatchSortConfig] = useState<{ key: string; direction: "asc" | "desc" | null }>({
+    key: "matchDate",
+    direction: "asc",
+  });
+  const [sessionSortConfig, setSessionSortConfig] = useState<{ key: string; direction: "asc" | "desc" | null }>({
+    key: "date",
+    direction: "asc",
+  });
+
+  const sortedMatches = useMemo(() => {
+    if (!matchSortConfig.key || !matchSortConfig.direction) return matches;
+    return [...matches].sort((a: any, b: any) => {
+      let aValue = matchSortConfig.key === "team" ? a.team?.name : a[matchSortConfig.key];
+      let bValue = matchSortConfig.key === "team" ? b.team?.name : b[matchSortConfig.key];
+      if (aValue < bValue) return matchSortConfig.direction === "asc" ? -1 : 1;
+      if (aValue > bValue) return matchSortConfig.direction === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [matches, matchSortConfig]);
+
+  const sortedSessions = useMemo(() => {
+    if (!sessionSortConfig.key || !sessionSortConfig.direction) return sessions;
+    return [...sessions].sort((a: any, b: any) => {
+      let aValue = sessionSortConfig.key === "team" ? a.team?.name : a[sessionSortConfig.key];
+      let bValue = sessionSortConfig.key === "team" ? b.team?.name : b[sessionSortConfig.key];
+      if (aValue < bValue) return sessionSortConfig.direction === "asc" ? -1 : 1;
+      if (aValue > bValue) return sessionSortConfig.direction === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [sessions, sessionSortConfig]);
+
+  const handleMatchSort = (key: string) => {
+    let direction: "asc" | "desc" | null = "asc";
+    if (matchSortConfig.key === key && matchSortConfig.direction === "asc") direction = "desc";
+    else if (matchSortConfig.key === key && matchSortConfig.direction === "desc") direction = null;
+    setMatchSortConfig({ key, direction });
+  };
+
+  const handleSessionSort = (key: string) => {
+    let direction: "asc" | "desc" | null = "asc";
+    if (sessionSortConfig.key === key && sessionSortConfig.direction === "asc") direction = "desc";
+    else if (sessionSortConfig.key === key && sessionSortConfig.direction === "desc") direction = null;
+    setSessionSortConfig({ key, direction });
+  };
+
+  const SortIcon = ({ config, column }: { config: any; column: string }) => {
+    if (config.key !== column) return null;
+    return config.direction === "asc" ? (
+      <ChevronUp size={14} className="ml-1 inline" />
+    ) : (
+      <ChevronDown size={14} className="ml-1 inline" />
+    );
+  };
 
   // Mutations
   const createMatchMutation = useMutation({
@@ -286,6 +341,37 @@ const MatchesTraining = () => {
 
   const handleUpdateMatchResult = () => {
     if (!selectedMatchForResult) return;
+
+    // Validation: Minute should be positive
+    const invalidMinute = matchResultForm.scorers.some(s => {
+      // Extract first number if it's something like "90+2"
+      const val = s.minute.match(/^\d+/);
+      const min = val ? parseInt(val[0]) : NaN;
+      return isNaN(min) || min <= 0;
+    });
+    if (invalidMinute) {
+      return toast({ title: "Invalid minute", description: "Scorer minutes must be positive numbers (e.g. 1, 90, 45+2)", variant: "destructive" });
+    }
+
+    // Validation: Scorer goal counts should not exceed total score
+    const homeScorerTotal = matchResultForm.scorers.filter(s => s.isHomeTeam).reduce((sum, s) => sum + (s.goalCount || 1), 0);
+    const awayScorerTotal = matchResultForm.scorers.filter(s => !s.isHomeTeam).reduce((sum, s) => sum + (s.goalCount || 1), 0);
+
+    if (homeScorerTotal > matchResultForm.homeScore) {
+      return toast({ 
+        title: "Validation Error", 
+        description: `Home scorers total (${homeScorerTotal}) exceeds home score (${matchResultForm.homeScore})`, 
+        variant: "destructive" 
+      });
+    }
+    if (awayScorerTotal > matchResultForm.awayScore) {
+      return toast({ 
+        title: "Validation Error", 
+        description: `Away scorers total (${awayScorerTotal}) exceeds away score (${matchResultForm.awayScore})`, 
+        variant: "destructive" 
+      });
+    }
+
     updateMatchMutation.mutate({
       id: selectedMatchForResult.id,
       payload: {
@@ -328,16 +414,24 @@ const MatchesTraining = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Team</TableHead>
-                  <TableHead>Opponent</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Location</TableHead>
+                  <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleMatchSort("team")}>
+                    Team <SortIcon config={matchSortConfig} column="team" />
+                  </TableHead>
+                  <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleMatchSort("opponent")}>
+                    Opponent <SortIcon config={matchSortConfig} column="opponent" />
+                  </TableHead>
+                  <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleMatchSort("matchDate")}>
+                    Date <SortIcon config={matchSortConfig} column="matchDate" />
+                  </TableHead>
+                  <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleMatchSort("venue")}>
+                    Location <SortIcon config={matchSortConfig} column="venue" />
+                  </TableHead>
                   <TableHead>Result</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {matches.map((match: any) => (
+                {sortedMatches.map((match: any) => (
                   <TableRow 
                     key={match.id} 
                     className="transition-colors hover:bg-secondary/50 cursor-pointer"
@@ -413,16 +507,26 @@ const MatchesTraining = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Team</TableHead>
-                  <TableHead>Session</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleSessionSort("team")}>
+                    Team <SortIcon config={sessionSortConfig} column="team" />
+                  </TableHead>
+                  <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleSessionSort("title")}>
+                    Session <SortIcon config={sessionSortConfig} column="title" />
+                  </TableHead>
+                  <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleSessionSort("date")}>
+                    Date <SortIcon config={sessionSortConfig} column="date" />
+                  </TableHead>
+                  <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleSessionSort("duration")}>
+                    Duration <SortIcon config={sessionSortConfig} column="duration" />
+                  </TableHead>
+                  <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleSessionSort("status")}>
+                    Status <SortIcon config={sessionSortConfig} column="status" />
+                  </TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sessions.map((session: any) => (
+                {sortedSessions.map((session: any) => (
                   <TableRow key={session.id} className="transition-colors hover:bg-secondary/50">
                     <TableCell className="font-medium text-foreground">{session.team?.name || session.teamId}</TableCell>
                     <TableCell>
@@ -770,6 +874,7 @@ const MatchesTraining = () => {
                       <Label className="text-[10px]">Qty</Label>
                       <Input 
                         type="number"
+                        min="1"
                         className="text-[11px] h-8 px-1"
                         value={scorer.goalCount}
                         onChange={(e) => {

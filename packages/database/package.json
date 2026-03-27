@@ -7,6 +7,7 @@
     "bcryptjs": "^3.0.3"
   },
   "devDependencies": {
+    "@prisma/config": "^7.6.0",
     "@types/bcryptjs": "^3.0.0",
     "prisma": "^6.0.0"
   }
