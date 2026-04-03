@@ -168,8 +168,26 @@ export async function POST(request: Request) {
 
         const created = await prisma.session.create({ data: createData });
 
+        // Auto-initialize participants if teamId is provided
+        if (data.teamId) {
+            const teamPlayers = await prisma.player.findMany({
+                where: { teamId: data.teamId },
+                select: { id: true }
+            });
+
+            if (teamPlayers.length > 0) {
+                await prisma.sessionParticipant.createMany({
+                    data: teamPlayers.map(p => ({
+                        sessionId: created.id,
+                        playerId: p.id,
+                        attendanceStatus: 'PENDING'
+                    }))
+                });
+            }
+        }
+
         // emit event (simple console log for now)
-        console.info("Event: SessionCreated", { sessionId: created.id });
+        console.info("Event: SessionCreated", { sessionId: created.id, participantsCount: data.teamId ? (await prisma.sessionParticipant.count({ where: { sessionId: created.id } })) : 0 });
 
         return NextResponse.json(created, { status: 201 });
     } catch (error) {

@@ -206,3 +206,40 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
+
+/**
+ * DELETE /api/videos?id=N — delete a video and its file
+ */
+export async function DELETE(request: Request) {
+    const auth = await requireAuth();
+    if (!auth.session) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const { session } = auth;
+
+    try {
+        const url = new URL(request.url);
+        const idParam = url.searchParams.get("id");
+        if (!idParam) return NextResponse.json({ error: "id is required" }, { status: 400 });
+        const id = Number(idParam);
+
+        const video = await prisma.video.findUnique({ where: { id } });
+        if (!video) return NextResponse.json({ error: "Video not found" }, { status: 404 });
+        if (session.role !== "SUPER_ADMIN" && video.organizationId !== session.organizationId) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
+        // Delete from DB (cascade handles clips / analysis jobs via FK)
+        await prisma.video.delete({ where: { id } });
+
+        // Attempt to delete file from disk (non-blocking)
+        try {
+            const { unlink } = await import("fs/promises");
+            const { getStoragePath } = await import("@/lib/upload");
+            await unlink(getStoragePath(video.storagePath));
+        } catch (_) { /* ignore if file not found */ }
+
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        console.error("Delete video error:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+}

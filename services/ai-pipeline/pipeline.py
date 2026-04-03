@@ -5,7 +5,7 @@ from metrics import compute_player_metrics
 import config
 
 
-def process_video_with_tracking(video_path: str, model_version: str = 'yolov8n'):
+def process_video_with_tracking(video_path: str, model_version: str = 'yolov8n', progress_cb=None):
     """
     Runs detection -> tracking -> metrics on a video file.
 
@@ -43,6 +43,9 @@ def process_video_with_tracking(video_path: str, model_version: str = 'yolov8n')
             if tid not in trajectories:
                 trajectories[tid] = []
             trajectories[tid].append({'frame': frame_idx, 'bbox': bbox})
+
+        if progress_cb and total_frames > 0 and frame_idx % 30 == 0:
+            progress_cb(frame_idx, total_frames)
 
         frame_idx += 1
 

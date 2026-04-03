@@ -75,45 +75,7 @@ const CreateCoach: React.FC = () => {
             entity="coach"
             onCancel={() => navigate(-1)}
             submitting={createMutation.isPending}
-            onSubmit={(payload) => {
-              const body: any = {};
-
-              // create user if credentials are provided
-              if (
-                payload.email &&
-                payload.username &&
-                payload.password &&
-                payload.organizationSlug &&
-                payload.joinCode
-              ) {
-                body.createUser = {
-                  email: payload.email,
-                  username: payload.username,
-                  password: payload.password,
-                  organizationSlug: payload.organizationSlug,
-                  joinCode: payload.joinCode,
-                  role: "COACH",
-                };
-              }
-
-              body.bio = payload.coachBio || payload.bio;
-
-              if (payload.coachSpecialty) {
-                body.specialty = payload.coachSpecialty
-                  .split(",")
-                  .map((s: string) => s.trim())
-                  .filter(Boolean);
-              }
-
-              if (payload.coachLicense) {
-                body.licenseLevel = payload.coachLicense
-                  .split(",")
-                  .map((s: string) => s.trim())
-                  .filter(Boolean);
-              }
-
-              createMutation.mutate(body);
-            }}
+            onSubmit={(payload) => createMutation.mutate(payload)}
           />
         </CardContent>
       </Card>

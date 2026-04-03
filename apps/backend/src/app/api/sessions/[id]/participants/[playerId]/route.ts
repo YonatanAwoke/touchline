@@ -67,14 +67,14 @@ import { participantUpdateSchema } from "@/lib/validation";
  *       200:
  *         description: Participant removed
  */
-export async function PATCH(request: Request, { params }: { params: { id: string, participantId: string } | Promise<{ id: string, participantId: string }> }) {
+export async function PATCH(request: Request, { params }: { params: { id: string, playerId: string } | Promise<{ id: string, playerId: string }> }) {
     const auth = await requireAuth();
     if (!auth.session) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const { session } = auth;
 
     const resolvedParams = await params as any;
     const sessionId = Number(resolvedParams.id);
-    const participantId = Number(resolvedParams.participantId);
+    const participantId = Number(resolvedParams.playerId);
 
     const roleCheck = requireRole(["CLUB_ADMIN", "SUPER_ADMIN", "COACH"])(session);
     if (roleCheck.error) return NextResponse.json({ error: roleCheck.error }, { status: roleCheck.status });
@@ -112,14 +112,14 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     }
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string, participantId: string } | Promise<{ id: string, participantId: string }> }) {
+export async function DELETE(request: Request, { params }: { params: { id: string, playerId: string } | Promise<{ id: string, playerId: string }> }) {
     const auth = await requireAuth();
     if (!auth.session) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const { session } = auth;
 
     const resolvedParams = await params as any;
     const sessionId = Number(resolvedParams.id);
-    const participantId = Number(resolvedParams.participantId);
+    const participantId = Number(resolvedParams.playerId);
 
     const roleCheck = requireRole(["SUPER_ADMIN", "CLUB_ADMIN"])(session);
     if (roleCheck.error) return NextResponse.json({ error: roleCheck.error }, { status: roleCheck.status });

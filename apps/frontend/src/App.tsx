@@ -21,6 +21,7 @@ import EarlyAccess from "./pages/EarlyAccess";
 import MatchesTraining from "./pages/MatchesTraining";
 import Schedule from "./pages/Schedule";
 import Settings from "./pages/Settings";
+import Analysis from "./pages/Analysis";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "./lib/auth";
 
@@ -55,6 +56,7 @@ const App = () => (
             <Route path="/dashboard/create-player" element={<CreatePlayer />} />
             <Route path="/dashboard/matches-training" element={<MatchesTraining />} />
             <Route path="/dashboard/schedule" element={<Schedule />} />
+            <Route path="/dashboard/analysis" element={<Analysis />} />
             <Route path="/dashboard/settings" element={<Settings />} />
             <Route path="/early-access" element={<EarlyAccess />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

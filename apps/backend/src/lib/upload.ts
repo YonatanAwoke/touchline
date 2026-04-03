@@ -68,39 +68,37 @@ export async function extractVideoMetadata(filePath: string): Promise<{
     width: number | null;
     height: number | null;
 }> {
-    return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(filePath, (err, metadata) => {
-            if (err) {
-                console.error("FFprobe error:", err);
+    const nullResult = { durationSec: null, fps: null, width: null, height: null };
+
+    return new Promise((resolve) => {
+        try {
+            ffmpeg.ffprobe(filePath, (err, metadata) => {
+                if (err) {
+                    console.warn("FFprobe unavailable or failed — metadata skipped:", err.message);
+                    return resolve(nullResult);
+                }
+
+                const videoStream = metadata.streams.find(s => s.codec_type === "video");
+                const durationSec = metadata.format.duration
+                    ? Math.round(metadata.format.duration)
+                    : null;
+                const fps = videoStream?.r_frame_rate
+                    ? eval(videoStream.r_frame_rate)   // e.g. "30/1" → 30
+                    : null;
+                const width = videoStream?.width ?? null;
+                const height = videoStream?.height ?? null;
+
                 resolve({
-                    durationSec: null,
-                    fps: null,
-                    width: null,
-                    height: null,
+                    durationSec,
+                    fps: fps ? Math.round(fps) : null,
+                    width,
+                    height,
                 });
-                return;
-            }
-
-            const videoStream = metadata.streams.find(s => s.codec_type === "video");
-
-            const durationSec = metadata.format.duration
-                ? Math.round(metadata.format.duration)
-                : null;
-
-            const fps = videoStream?.r_frame_rate
-                ? eval(videoStream.r_frame_rate)
-                : null;
-
-            const width = videoStream?.width || null;
-            const height = videoStream?.height || null;
-
-            resolve({
-                durationSec,
-                fps: fps ? Math.round(fps) : null,
-                width,
-                height,
             });
-        });
+        } catch (outerErr) {
+            console.warn("FFprobe threw synchronously — metadata skipped:", outerErr);
+            resolve(nullResult);
+        }
     });
 }
 

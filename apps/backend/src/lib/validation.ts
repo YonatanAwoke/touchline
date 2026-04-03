@@ -219,6 +219,23 @@ export const analysisJobCreateSchema = z.object({
 export type AnalysisJobCreateInput = z.infer<typeof analysisJobCreateSchema>;
 
 /**
+ * Video clip create schema
+ */
+export const videoClipCreateSchema = z.object({
+    videoId: z.number().int(),
+    playerId: z.number().int().optional().nullable(),
+    startSec: z.number().int(),
+    endSec: z.number().int(),
+    label: z.string().optional().nullable(),
+    tags: z.array(z.string()).optional().default([]),
+    createdBy: z.enum(["MANUAL", "AI"]).optional().default("MANUAL"),
+    organizationId: z.number().int(),
+    metadata: z.record(z.string(), z.any()).optional().nullable(),
+});
+
+export type VideoClipCreateInput = z.infer<typeof videoClipCreateSchema>;
+
+/**
  * Match schemas
  */
 export const scorerSchema = z.object({

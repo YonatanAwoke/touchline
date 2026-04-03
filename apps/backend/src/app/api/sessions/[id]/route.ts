@@ -120,7 +120,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
                         user: { select: userSafeSelect }
                     }
                 },
-                videos: { select: { id: true, url: true, status: true } },
+                videos: { select: { id: true, storagePath: true, status: true } },
                 coach: { include: { user: { select: userSafeSelect } } },
                 team: true,
             }
@@ -133,9 +133,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
         }
 
         return NextResponse.json(targetSession);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Get session error:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
 

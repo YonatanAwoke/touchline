@@ -192,3 +192,31 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
+
+/**
+ * DELETE /api/clips?id=N — delete a clip
+ */
+export async function DELETE(request: Request) {
+    const auth = await requireAuth();
+    if (!auth.session) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const { session } = auth;
+
+    try {
+        const url = new URL(request.url);
+        const idParam = url.searchParams.get("id");
+        if (!idParam) return NextResponse.json({ error: "id is required" }, { status: 400 });
+        const id = Number(idParam);
+
+        const clip = await prisma.videoClip.findUnique({ where: { id } });
+        if (!clip) return NextResponse.json({ error: "Clip not found" }, { status: 404 });
+        if (session.role !== "SUPER_ADMIN" && clip.organizationId !== session.organizationId) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
+        await prisma.videoClip.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        console.error("Delete clip error:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+}

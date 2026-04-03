@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import prisma from "@touchline/database";
 import { requireAuth } from "@/lib/security";
 
-export async function POST(
+export async function DELETE(
     request: Request,
-    { params }: { params: { id: string } | Promise<{ id: string }> }
+    { params }: { params: { id: string; playerId: string } | Promise<{ id: string; playerId: string }> }
 ) {
     const auth = await requireAuth();
     if (!auth.session) return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -12,11 +12,9 @@ export async function POST(
 
     const resolvedParams = await params as any;
     const sessionId = Number(resolvedParams.id);
+    const playerId = Number(resolvedParams.playerId);
 
     try {
-        const { playerId } = await request.json();
-        if (!playerId) return NextResponse.json({ error: "playerId is required" }, { status: 400 });
-
         const targetSession = await prisma.session.findUnique({ where: { id: sessionId } });
         if (!targetSession) return NextResponse.json({ error: "Session not found" }, { status: 404 });
 
@@ -25,21 +23,18 @@ export async function POST(
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
-        const participant = await prisma.sessionParticipant.create({
-            data: {
-                sessionId,
-                playerId: Number(playerId),
-                attendanceStatus: 'PENDING'
-            },
-            include: {
-                player: { include: { user: { select: { id: true, username: true } } } }
+        await prisma.sessionParticipant.delete({
+            where: {
+                sessionId_playerId: {
+                    sessionId,
+                    playerId
+                }
             }
         });
 
-        return NextResponse.json(participant, { status: 201 });
+        return NextResponse.json({ success: true });
     } catch (error: any) {
-        if (error.code === 'P2002') return NextResponse.json({ error: "Player already added to this session" }, { status: 400 });
-        console.error("Add participant error:", error);
+        console.error("Remove participant error:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

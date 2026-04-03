@@ -13,6 +13,12 @@ type Props = {
   onSubmit: (payload: any) => void;
   submitting?: boolean;
 };
+const FormField = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <div className="space-y-1.5">
+    <label className="form-label">{label}</label>
+    {children}
+  </div>
+);
 
 const CreateEntityForm: React.FC<Props> = ({ entity, onCancel, onSubmit, submitting }) => {
   // Common / Organization / Club fields
@@ -131,8 +137,8 @@ const CreateEntityForm: React.FC<Props> = ({ entity, onCancel, onSubmit, submitt
       onSubmit({
         createUser: createUserPayload ? { ...createUserPayload, role: "COACH" } : undefined,
         bio: coachBio || undefined,
-        specialty: coachSpecialty || undefined,
-        license: coachLicense || undefined,
+        specialty: coachSpecialty ? coachSpecialty.split(",").map(s => s.trim()).filter(Boolean) : undefined,
+        licenseLevel: coachLicense ? coachLicense.split(",").map(s => s.trim()).filter(Boolean) : undefined,
       });
       return;
     }
@@ -157,12 +163,6 @@ const CreateEntityForm: React.FC<Props> = ({ entity, onCancel, onSubmit, submitt
   };
 
   // Helper components
-  const FormField = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div className="space-y-1.5">
-      <label className="form-label">{label}</label>
-      {children}
-    </div>
-  );
 
   const entityLabels: Record<Entity, { icon: React.ReactNode; title: string }> = {
     organization: { icon: <Building2 size={18} />, title: "Organization Details" },

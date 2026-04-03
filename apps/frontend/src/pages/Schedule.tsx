@@ -3,21 +3,21 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
+  CalendarDays,
+  X,
+  Pencil,
+  Trash2,
+  Users,
+  Search,
   ChevronLeft,
   ChevronRight,
   Plus,
   Clock,
-  MapPin,
-  CalendarDays,
-  X,
-  Pencil,
-  Trash2
+  MapPin
 } from "lucide-react";
+import AddEventDialog from "@/components/AddEventDialog";
+import SessionDetailSidebar from "@/components/SessionDetailSidebar";
 import {
   format,
   startOfMonth,
@@ -46,6 +46,10 @@ interface ScheduleEvent {
   location?: string;
   category: EventCategory;
   description?: string;
+  teamId?: number;
+  coachId?: number;
+  type?: string;
+  opponent?: string;
 }
 
 const categoryConfig: Record<EventCategory, { label: string; className: string; dot: string }> = {
@@ -89,11 +93,14 @@ const Schedule = () => {
 
   const [isRescheduling, setIsRescheduling] = useState(false);
 
+  // Attendance State
+  const [localAttendance, setLocalAttendance] = useState<Record<number, string>>({});
+
   // Fetch Matches
   const { data: matchesData } = useQuery({
     queryKey: ["matches"],
     queryFn: async () => {
-      const res = await fetch("/api/matches", { credentials: "include" });
+      const res = await fetch("/api/matches?limit=1000", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load matches");
       return res.json();
     }
@@ -109,11 +116,36 @@ const Schedule = () => {
     }
   });
 
+  // Fetch Session Detail
+  const selectedSessionId = selectedEvent?.id.toString().startsWith("session") 
+    ? Number(selectedEvent.id.toString().split("-")[1]) 
+    : null;
+
+  const { data: sessionDetail, isLoading: isLoadingDetail } = useQuery({
+    queryKey: ["session", selectedSessionId],
+    queryFn: async () => {
+      if (!selectedSessionId) return null;
+      const res = await fetch(`/api/sessions/${selectedSessionId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load session details");
+      const data = await res.json();
+      
+      // Initialize local attendance status
+      const initialAttendance: Record<number, string> = {};
+      data.participants?.forEach((p: any) => {
+        if (p.playerId) initialAttendance[p.playerId] = p.attendanceStatus;
+      });
+      setLocalAttendance(initialAttendance);
+      
+      return data;
+    },
+    enabled: !!selectedSessionId,
+  });
+
   // Fetch Teams
   const { data: teamsData } = useQuery({
     queryKey: ["teams"],
     queryFn: async () => {
-      const res = await fetch("/api/teams", { credentials: "include" });
+      const res = await fetch("/api/teams?limit=1000", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load teams");
       return res.json();
     }
@@ -129,6 +161,17 @@ const Schedule = () => {
       return res.json();
     }
   });
+
+  // Fetch all players for manual addition
+  const { data: allPlayersData } = useQuery({
+    queryKey: ["all-players"],
+    queryFn: async () => {
+      const res = await fetch("/api/players?limit=1000", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load players");
+      return res.json();
+    }
+  });
+  const allPlayers = allPlayersData?.items ?? [];
 
   // Fetch Todos
   const todosQuery = useQuery({
@@ -295,40 +338,95 @@ const Schedule = () => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["todos"] })
   });
 
-  const handleCreateEvent = () => {
-    const dateTime = new Date(`${newEvent.date}T${newEvent.startTime || "00:00"}`);
-    if (newEvent.category === "match") {
+  const updateAttendanceMutation = useMutation({
+    mutationFn: async ({ sessionId, attendance }: { sessionId: number; attendance: any[] }) => {
+      const res = await fetch(`/api/sessions/${sessionId}/attendance`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attendance }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update attendance");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["session", selectedSessionId] });
+      toast({ title: "Attendance updated successfully" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" })
+  });
+
+  const addParticipantMutation = useMutation({
+    mutationFn: async ({ sessionId, playerId }: { sessionId: number; playerId: number }) => {
+      const res = await fetch(`/api/sessions/${sessionId}/participants`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to add participant");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["session", selectedSessionId] });
+      toast({ title: "Player added to session" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" })
+  });
+
+  const removeParticipantMutation = useMutation({
+    mutationFn: async ({ sessionId, playerId }: { sessionId: number; playerId: number }) => {
+      const res = await fetch(`/api/sessions/${sessionId}/participants/player/${playerId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to remove participant");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["session", selectedSessionId] });
+      toast({ title: "Player removed from session" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" })
+  });
+
+  const handleCreateEvent = (data: any) => {
+    const dateTime = new Date(`${data.date}T${data.startTime || "00:00"}`);
+    if (data.category === "match") {
       createMatchMutation.mutate({
-        opponent: newEvent.opponent || newEvent.title,
+        opponent: data.opponent || data.title,
         matchDate: dateTime.toISOString(),
-        venue: newEvent.location,
-        teamId: Number(newEvent.teamId),
+        venue: data.location,
+        teamId: Number(data.teamId),
         competition: "OTHER"
       });
     } else {
-      const selectedTeam = teams.find((t: any) => t.id === Number(newEvent.teamId));
+      const selectedTeam = teams.find((t: any) => t.id === Number(data.teamId));
       createSessionMutation.mutate({
-        title: newEvent.title,
+        title: data.title,
         date: dateTime.toISOString(),
         duration: 90,
-        type: newEvent.type,
-        teamId: Number(newEvent.teamId),
-        coachId: Number(newEvent.coachId),
+        type: data.type,
+        teamId: Number(data.teamId),
+        coachId: Number(data.coachId),
         organizationId: selectedTeam?.organizationId ?? (teams[0] as any)?.organizationId,
-        venue: newEvent.location,
+        venue: data.location,
       });
     }
   };
 
-  const handleReschedule = () => {
+  const handleReschedule = (data: any) => {
     if (!selectedEvent) return;
-    const dateTime = new Date(`${newEvent.date}T${newEvent.startTime || "00:00"}`);
+    const dateTime = new Date(`${data.date}T${data.startTime || "00:00"}`);
     const idStr = String(selectedEvent.id);
     const id = Number(idStr.split("-")[1]);
     if (idStr.startsWith("match")) {
-      updateMatchMutation.mutate({ id, payload: { matchDate: dateTime.toISOString(), venue: newEvent.location } });
+      updateMatchMutation.mutate({ id, payload: { matchDate: dateTime.toISOString(), venue: data.location } });
     } else {
-      updateSessionMutation.mutate({ id, payload: { date: dateTime.toISOString(), venue: newEvent.location } });
+      updateSessionMutation.mutate({ id, payload: { date: dateTime.toISOString(), venue: data.location, type: data.type } });
     }
   };
 
@@ -340,6 +438,8 @@ const Schedule = () => {
       time: format(new Date(m.matchDate), "HH:mm"),
       location: m.venue,
       category: "match" as const,
+      teamId: m.teamId,
+      opponent: m.opponent,
     }));
 
     const apiSessions = (sessionsData?.items ?? []).map((s: any) => ({
@@ -350,6 +450,9 @@ const Schedule = () => {
       location: s.venue,
       category: "training" as const,
       description: s.notes,
+      teamId: s.teamId,
+      coachId: s.coachId,
+      type: s.type,
     }));
 
     return [...apiMatches, ...apiSessions];
@@ -454,7 +557,22 @@ const Schedule = () => {
                 </button>
               </div>
 
-              <Button size="sm" className="gap-2" onClick={() => setShowAddEvent(true)}>
+              <Button size="sm" className="gap-2" onClick={() => {
+                setNewEvent({
+                  title: "",
+                  date: "",
+                  startTime: "",
+                  endTime: "",
+                  location: "",
+                  category: "training",
+                  teamId: "",
+                  coachId: "",
+                  opponent: "",
+                  type: "TECHNICAL",
+                });
+                setIsRescheduling(false);
+                setShowAddEvent(true);
+              }}>
                 <Plus size={14} /> Add
               </Button>
             </div>
@@ -470,7 +588,7 @@ const Schedule = () => {
                   </div>
                 ))}
                 {calendarDays.map((day, idx) => {
-                  const events = getEventsForDay(day);
+                  const dayEvents = getEventsForDay(day);
                   const isCurrentMonth = isSameMonth(day, currentDate);
                   const isTodayDate = isToday(day);
                   const isSelected = selectedDate && isSameDay(day, selectedDate);
@@ -490,7 +608,7 @@ const Schedule = () => {
                         {format(day, "d")}
                       </span>
                       <div className="mt-0.5 flex w-full flex-col gap-0.5">
-                        {events.slice(0, 2).map((event) => (
+                        {dayEvents.slice(0, 2).map((event) => (
                           <div
                             key={event.id}
                             onClick={(e) => { e.stopPropagation(); setSelectedEvent(event); }}
@@ -499,8 +617,8 @@ const Schedule = () => {
                             {event.title}
                           </div>
                         ))}
-                        {events.length > 2 && (
-                          <span className="px-1 text-[10px] text-muted-foreground">+{events.length - 2} more</span>
+                        {dayEvents.length > 2 && (
+                          <span className="px-1 text-[10px] text-muted-foreground">+{dayEvents.length - 2} more</span>
                         )}
                       </div>
                     </button>
@@ -618,346 +736,49 @@ const Schedule = () => {
           </CardContent>
         </Card>
 
-        {/* Right Sidebar */}
-        <div className="flex flex-col gap-4">
-          {selectedEvent ? (
-            <Card className="border-border">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <Badge className={categoryConfig[selectedEvent.category].className}>
-                    {categoryConfig[selectedEvent.category].label}
-                  </Badge>
-                  <button
-                    onClick={() => setSelectedEvent(null)}
-                    className="flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-                <h3 className="text-base font-bold text-foreground mb-3">
-                  {selectedEvent.title}
-                </h3>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Clock size={14} className="text-primary" />
-                    {selectedEvent.time}
-                    {selectedEvent.endTime && ` – ${selectedEvent.endTime}`}
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <CalendarDays size={14} className="text-primary" />
-                    {format(selectedEvent.date, "EEE, dd MMMM yyyy")}
-                  </div>
-                  {selectedEvent.location && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <MapPin size={14} className="text-primary" />
-                      {selectedEvent.location}
-                    </div>
-                  )}
-                </div>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="mt-4 w-full"
-                  onClick={() => {
-                    const idStr = String(selectedEvent.id);
-                    setNewEvent({
-                      title: selectedEvent.title,
-                      date: format(selectedEvent.date, "yyyy-MM-dd"),
-                      startTime: selectedEvent.time,
-                      endTime: selectedEvent.endTime || "",
-                      location: selectedEvent.location || "",
-                      category: selectedEvent.category,
-                      teamId: "",
-                      coachId: "",
-                      opponent: idStr.startsWith("match") ? selectedEvent.title.replace("Vs ", "") : "",
-                      type: "TECHNICAL",
-                    });
-                    setIsRescheduling(true);
-                    setShowAddEvent(true);
-                  }}
-                >
-                  Reschedule
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="border-border">
-              <CardContent className="p-4">
-                <h3 className="text-sm font-bold text-foreground mb-3">
-                  {selectedDate
-                    ? format(selectedDate, "EEEE, MMM d")
-                    : "Today's Events"}
-                </h3>
-                {todayEvents.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No events scheduled.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {todayEvents.map((event) => (
-                      <button
-                        key={event.id}
-                        onClick={() => setSelectedEvent(event)}
-                        className="flex w-full items-start gap-3 rounded-lg p-2 text-left transition-colors hover:bg-secondary/60"
-                      >
-                        <div className="mt-1.5">
-                          <div className={`h-2.5 w-2.5 rounded-full ${categoryConfig[event.category].dot}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate">
-                            {event.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {event.time}{event.endTime ? ` – ${event.endTime}` : ""}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* To Do List */}
-          <Card className="border-border">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex flex-col">
-                  <h3 className="text-sm font-bold text-foreground">
-                    {selectedEvent ? "Event To Do" : "General To Do"}
-                  </h3>
-                  {selectedEvent && (
-                    <button 
-                      onClick={() => setSelectedEvent(null)}
-                      className="text-[10px] text-primary hover:underline flex items-center gap-1"
-                    >
-                      <X size={10} /> Back to General
-                    </button>
-                  )}
-                </div>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-6 w-6">
-                      <Plus size={14} />
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Add To Do</DialogTitle>
-                      <DialogDescription>Add a new task to your list.</DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4">
-                      <Input
-                        placeholder="Task description..."
-                        value={newTodoText}
-                        onChange={(e) => setNewTodoText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            const idStr = selectedEvent ? String(selectedEvent.id) : "";
-                            const id = idStr ? Number(idStr.split("-")[1]) : undefined;
-                            createTodoMutation.mutate({ 
-                              text: newTodoText,
-                              matchId: idStr.startsWith("match") ? id : undefined,
-                              sessionId: idStr.startsWith("session") ? id : undefined
-                            });
-                          }
-                        }}
-                      />
-                    </div>
-                    <DialogFooter>
-                      <Button 
-                        onClick={() => {
-                          const idStr = selectedEvent ? String(selectedEvent.id) : "";
-                          const id = idStr ? Number(idStr.split("-")[1]) : undefined;
-                          createTodoMutation.mutate({ 
-                            text: newTodoText,
-                            matchId: idStr.startsWith("match") ? id : undefined,
-                            sessionId: idStr.startsWith("session") ? id : undefined
-                          });
-                        }} 
-                        disabled={createTodoMutation.isPending || !newTodoText.trim()}
-                      >
-                        Add Task
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </div>
-
-              {todosQuery.isLoading ? (
-                <p className="text-center py-4 text-xs text-muted-foreground">Loading...</p>
-              ) : (
-                <div className="space-y-2.5">
-                  {todosQuery.data?.map((todo: any) => (
-                    <div key={todo.id} className="flex items-center gap-2 group">
-                      <Checkbox
-                        checked={todo.done}
-                        onCheckedChange={(checked) => toggleTodoMutation.mutate({ id: todo.id, done: !!checked })}
-                      />
-                      {editingTodoId === todo.id ? (
-                        <Input
-                          autoFocus
-                          className="h-7 text-xs"
-                          value={editingTodoText}
-                          onChange={(e) => setEditingTodoText(e.target.value)}
-                          onBlur={() => {
-                            if (editingTodoText.trim() && editingTodoText !== todo.text) {
-                              updateTodoMutation.mutate({ id: todo.id, text: editingTodoText });
-                            }
-                            setEditingTodoId(null);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              updateTodoMutation.mutate({ id: todo.id, text: editingTodoText });
-                              setEditingTodoId(null);
-                            }
-                            if (e.key === "Escape") setEditingTodoId(null);
-                          }}
-                        />
-                      ) : (
-                        <span
-                          className={`flex-1 text-sm truncate transition-colors ${todo.done ? "text-muted-foreground line-through" : "text-foreground hover:text-primary cursor-pointer"}`}
-                          onClick={() => {
-                            setEditingTodoId(todo.id);
-                            setEditingTodoText(todo.text);
-                          }}
-                        >
-                          {todo.text}
-                        </span>
-                      )}
-                      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingTodoId(todo.id); setEditingTodoText(todo.text); }}>
-                          <Pencil size={12} />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => deleteTodoMutation.mutate(todo.id)}>
-                          <Trash2 size={12} />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  {todosQuery.data?.length === 0 && (
-                    <p className="text-center py-4 text-xs text-muted-foreground">No tasks today</p>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {/* Sidebar */}
+        <div className="space-y-6">
+          <SessionDetailSidebar
+            selectedEvent={selectedEvent}
+            setSelectedEvent={setSelectedEvent}
+            sessionDetail={sessionDetail}
+            isLoadingDetail={isLoadingDetail}
+            localAttendance={localAttendance}
+            setLocalAttendance={setLocalAttendance}
+            updateAttendanceMutation={updateAttendanceMutation}
+            allPlayers={allPlayers}
+            addParticipantMutation={addParticipantMutation}
+            removeParticipantMutation={removeParticipantMutation}
+            todosQuery={todosQuery}
+            newTodoText={newTodoText}
+            setNewTodoText={setNewTodoText}
+            createTodoMutation={createTodoMutation}
+            toggleTodoMutation={toggleTodoMutation}
+            deleteTodoMutation={deleteTodoMutation}
+            updateTodoMutation={updateTodoMutation}
+            editingTodoId={editingTodoId}
+            setEditingTodoId={setEditingTodoId}
+            editingTodoText={editingTodoText}
+            setEditingTodoText={setEditingTodoText}
+            setShowAddEvent={setShowAddEvent}
+            setIsRescheduling={setIsRescheduling}
+            setNewEvent={setNewEvent}
+            categoryConfig={categoryConfig}
+          />
         </div>
       </div>
 
-      {/* Add Event Dialog */}
-      <Dialog open={showAddEvent} onOpenChange={(open) => { setShowAddEvent(open); if (!open) setIsRescheduling(false); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <CalendarDays size={20} />
-              </div>
-              <DialogTitle className="text-foreground">{isRescheduling ? "Reschedule Event" : "Add Event"}</DialogTitle>
-            </div>
-          </DialogHeader>
-          <div className="space-y-4 mt-2">
-            {!isRescheduling && (
-              <div>
-                <Label>Category</Label>
-                <div className="flex gap-2 mt-1">
-                  {(["training", "match"] as EventCategory[]).map((cat) => (
-                    <Button
-                      key={cat}
-                      variant={newEvent.category === cat ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1 capitalize"
-                      onClick={() => setNewEvent({ ...newEvent, category: cat })}
-                    >
-                      {cat}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <Label>{newEvent.category === "match" ? "Opponent" : "Event Title"}</Label>
-              <Input 
-                placeholder={newEvent.category === "match" ? "e.g. Real Madrid" : "e.g. Tactical Drills"} 
-                value={newEvent.category === "match" ? newEvent.opponent : newEvent.title}
-                onChange={(e) => {
-                  if (newEvent.category === "match") setNewEvent({...newEvent, opponent: e.target.value});
-                  else setNewEvent({...newEvent, title: e.target.value});
-                }}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Team</Label>
-                <select 
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={newEvent.teamId}
-                  onChange={(e) => setNewEvent({...newEvent, teamId: e.target.value})}
-                >
-                  <option value="">Select Team</option>
-                  {teams.map((t: any) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-              {newEvent.category === "training" && (
-                <div>
-                  <Label>Coach</Label>
-                  <select 
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={newEvent.coachId}
-                    onChange={(e) => setNewEvent({...newEvent, coachId: e.target.value})}
-                  >
-                    <option value="">Select Coach</option>
-                    {coaches.map((c: any) => (
-                      <option key={c.id} value={c.id}>{c.user?.username || c.id}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Date</Label>
-                <Input 
-                  type="date" 
-                  value={newEvent.date}
-                  onChange={(e) => setNewEvent({...newEvent, date: e.target.value})}
-                />
-              </div>
-              <div>
-                <Label>Start Time</Label>
-                <Input 
-                  type="time" 
-                  value={newEvent.startTime}
-                  onChange={(e) => setNewEvent({...newEvent, startTime: e.target.value})}
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label>Location</Label>
-              <Input 
-                placeholder="e.g. Home Stadium" 
-                value={newEvent.location}
-                onChange={(e) => setNewEvent({...newEvent, location: e.target.value})}
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={() => { setShowAddEvent(false); setIsRescheduling(false); }}>Cancel</Button>
-              <Button 
-                onClick={isRescheduling ? handleReschedule : handleCreateEvent}
-                disabled={createMatchMutation.isPending || createSessionMutation.isPending || updateMatchMutation.isPending || updateSessionMutation.isPending}
-              >
-                {isRescheduling ? "Update Event" : "Add Event"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AddEventDialog
+        open={showAddEvent}
+        onOpenChange={(open) => { setShowAddEvent(open); if (!open) setIsRescheduling(false); }}
+        isRescheduling={isRescheduling}
+        newEvent={newEvent}
+        teams={teams}
+        coaches={coaches}
+        handleCreateEvent={handleCreateEvent}
+        handleReschedule={handleReschedule}
+        isPending={createMatchMutation.isPending || createSessionMutation.isPending || updateMatchMutation.isPending || updateSessionMutation.isPending}
+      />
     </DashboardLayout>
   );
 };

@@ -179,3 +179,34 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
+
+/**
+ * DELETE /api/analysis?id=N — delete an analysis job
+ */
+export async function DELETE(request: Request) {
+    const auth = await requireAuth();
+    if (!auth.session) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const { session } = auth;
+
+    try {
+        const url = new URL(request.url);
+        const idParam = url.searchParams.get("id");
+        if (!idParam) return NextResponse.json({ error: "id is required" }, { status: 400 });
+        const id = Number(idParam);
+
+        const job = await prisma.analysisJob.findUnique({
+            where: { id },
+            include: { video: true },
+        });
+        if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+        if (session.role !== "SUPER_ADMIN" && job.video.organizationId !== session.organizationId) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
+        await prisma.analysisJob.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        console.error("Delete analysis job error:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+}

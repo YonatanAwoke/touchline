@@ -215,11 +215,20 @@ export async function GET(request: Request) {
         const url = new URL(request.url);
         const params = url.searchParams;
         const skip = parseInt(params.get("skip") || "0", 10) || 0;
-        const take = Math.min(parseInt(params.get("limit") || "25", 10) || 25, 100);
+        const take = Math.min(parseInt(params.get("limit") || "25", 10) || 25, 1000);
 
         const where: any = {};
-        if (session.role !== "SUPER_ADMIN") {
+        const teamIdParam = params.get("teamId");
+        const orgParam = params.get("organizationId");
+
+        if (session.role === "SUPER_ADMIN") {
+            if (orgParam) where.user = { organizationId: Number(orgParam) };
+        } else {
             where.user = { organizationId: session.organizationId };
+        }
+
+        if (teamIdParam) {
+            where.teamId = Number(teamIdParam);
         }
 
         const userSafeSelect = {

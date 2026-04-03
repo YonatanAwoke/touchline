@@ -145,7 +145,7 @@ export async function GET(request: Request) {
         const url = new URL(request.url);
         const params = url.searchParams;
         const skip = parseInt(params.get("skip") || "0", 10) || 0;
-        const take = Math.min(parseInt(params.get("limit") || "25", 10) || 25, 100);
+        const take = Math.min(parseInt(params.get("limit") || "25", 10) || 25, 1000);
         const organizationIdParam = params.get("organizationId");
 
         const where: any = {};

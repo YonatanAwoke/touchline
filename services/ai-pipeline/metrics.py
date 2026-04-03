@@ -55,6 +55,7 @@ def compute_player_metrics(trajectories: Dict[int, List[Dict]], fps: float, mete
         # sprint detection: naive threshold on instantaneous speed (>6 m/s if scale known, else >50 px/s)
         sprint_threshold = 6.0 if meters_per_pixel else 50.0
         sprints = 0
+        sprint_events = []
         prev_center = None
         prev_time = None
         for f in frames:
@@ -66,6 +67,7 @@ def compute_player_metrics(trajectories: Dict[int, List[Dict]], fps: float, mete
                 speed = (d_px * meters_per_pixel) / dt if meters_per_pixel and dt > 0 else (d_px) / dt if dt > 0 else 0
                 if speed >= sprint_threshold:
                     sprints += 1
+                    sprint_events.append({'time': t, 'speed': speed})
             prev_center = c
             prev_time = t
 
@@ -74,6 +76,7 @@ def compute_player_metrics(trajectories: Dict[int, List[Dict]], fps: float, mete
             'max_speed': max_speed,
             'sprints': sprints,
             'frames': len(frames),
+            'sprint_events': sprint_events,
         }
 
     return results
