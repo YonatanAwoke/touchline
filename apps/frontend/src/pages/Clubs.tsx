@@ -341,6 +341,10 @@ const Clubs: React.FC = () => {
                           }}>
                             View Formation
                           </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => navigate(`/dashboard/tactical-board?clubId=${club.id}`)}>
+                            Tactical Board
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem onSelect={(e) => setConfirmDeleteClub(club)}>Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

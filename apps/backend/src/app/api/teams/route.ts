@@ -159,6 +159,8 @@ export async function GET(request: Request) {
             id: true,
             email: true,
             username: true,
+            firstName: true,
+            lastName: true,
             role: true,
             organizationId: true,
             createdAt: true,
@@ -179,8 +181,11 @@ export async function GET(request: Request) {
         ]);
 
         return NextResponse.json({ items, total, skip, limit: take });
-    } catch (error) {
+    } catch (error: any) {
         console.error("List teams error:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return NextResponse.json({ 
+            error: error.message || "Internal server error",
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        }, { status: 500 });
     }
 }

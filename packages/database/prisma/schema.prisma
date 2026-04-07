@@ -27,6 +27,7 @@ model Organization {
   sessions     Session[]
   videos       Video[]
   videoClips   VideoClip[]
+  tacticalBoards TacticalBoard[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -36,6 +37,8 @@ model User {
   email                String         @unique
   username             String         @unique
   password             String
+  firstName            String?
+  lastName             String?
   role                 Role           @default(COACH)
   organizationId       Int
   organization         Organization   @relation(fields: [organizationId], references: [id])
@@ -50,6 +53,7 @@ model User {
   refreshTokens        RefreshToken[]
   sessionParticipants  SessionParticipant[]
   todos                Todo[]
+  tacticalBoards       TacticalBoard[]
 }
 
 model RefreshToken {
@@ -147,6 +151,7 @@ model Team {
   sessions       Session[]
   matches        Match[]
   formations     Formation[]
+  tacticalBoards TacticalBoard[]
 }
 
 enum DominantFoot {
@@ -411,10 +416,11 @@ model Formation {
   template  String
   teamId    Int
   team      Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  isActive  Boolean             @default(false)
-  positions FormationPosition[]
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
+  isActive       Boolean             @default(false)
+  positions      FormationPosition[]
+  tacticalBoards TacticalBoard[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 }
 
 model FormationPosition {
@@ -440,4 +446,26 @@ model Todo {
   session   Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+model TacticalBoard {
+  id              Int           @id @default(autoincrement())
+  name            String
+  teamId          Int
+  team            Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  
+  formationId     Int?
+  formation       Formation?    @relation(fields: [formationId], references: [id], onDelete: SetNull)
+  
+  formationData    Json?        // Full state of player positions { [playerId]: {x, y} }
+  annotations      Json         @default("[]")
+  instructions     Json         @default("[]")
+  
+  organizationId   Int
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  createdBy        Int?
+  user             User?        @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 }

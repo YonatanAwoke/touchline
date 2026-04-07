@@ -276,3 +276,27 @@ export type MatchCreateInput = z.infer<typeof matchCreateSchema>;
 export type MatchUpdateInput = z.infer<typeof matchUpdateSchema>;
 export type MatchResultInput = z.infer<typeof matchResultSchema>;
 export type ScorerInput = z.infer<typeof scorerSchema>;
+
+/**
+ * Tactical Board schemas
+ */
+export const tacticalBoardCreateSchema = z.object({
+    name: z.string().min(1, "Name is required"),
+    teamId: z.number().int(),
+    formationId: z.number().int().optional().nullable(),
+    formationData: z.any().optional(),
+    annotations: z.array(z.any()).optional().default([]),
+    instructions: z.array(z.any()).optional().default([]),
+    organizationId: z.number().int(),
+});
+
+export const tacticalBoardUpdateSchema = z.object({
+    name: z.string().min(1).optional(),
+    formationId: z.number().int().optional().nullable(),
+    formationData: z.any().optional(),
+    annotations: z.array(z.any()).optional(),
+    instructions: z.array(z.any()).optional(),
+});
+
+export type TacticalBoardCreateInput = z.infer<typeof tacticalBoardCreateSchema>;
+export type TacticalBoardUpdateInput = z.infer<typeof tacticalBoardUpdateSchema>;
