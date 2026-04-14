@@ -28,6 +28,7 @@ import {
   Building2,
   Shield,
   Trophy,
+  ClipboardCheck,
 } from "lucide-react";
 
 const sidebarItems = [
@@ -38,6 +39,7 @@ const sidebarItems = [
   { icon: Building2, label: "Organization", path: "/dashboard/organization" },
   { icon: Users, label: "Coaches", path: "/dashboard/coaches" },
   { icon: Video, label: "Analysis", path: "/dashboard/analysis" },
+  { icon: ClipboardCheck, label: "Examination", path: "/dashboard/examination" },
   { icon: CalendarDays, label: "Schedule", path: "/dashboard/schedule" },
   { icon: Clock, label: "History", path: "/dashboard/history" },
   { icon: Settings, label: "Settings", path: "/dashboard/settings" },

@@ -261,6 +261,7 @@ export const matchCreateSchema = z.object({
     matchDate: z.string(), // ISO date
     competition: z.enum(["LEAGUE", "CUP", "FRIENDLY", "OTHER"]).optional(),
     venue: z.string().optional().nullable(),
+    tacticalBoardId: z.number().int().optional().nullable(),
     result: matchResultSchema.optional(),
 });
 
@@ -269,6 +270,7 @@ export const matchUpdateSchema = z.object({
     matchDate: z.string().optional(),
     competition: z.enum(["LEAGUE", "CUP", "FRIENDLY", "OTHER"]).optional(),
     venue: z.string().optional().nullable(),
+    tacticalBoardId: z.number().int().optional().nullable(),
     result: matchResultSchema.optional(),
 });
 

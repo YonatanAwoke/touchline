@@ -134,7 +134,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
                             include: { player: { include: { user: { select: { username: true } } } } }
                         } 
                     }
-                }
+                },
+                tacticalBoard: true
             }
         });
 
@@ -205,6 +206,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         if (typeof result.data.competition !== "undefined") updateData.competition = result.data.competition;
         if (typeof result.data.venue !== "undefined") updateData.venue = result.data.venue;
         if (typeof result.data.matchDate !== "undefined") updateData.matchDate = new Date(result.data.matchDate);
+        if (typeof result.data.tacticalBoardId !== "undefined") updateData.tacticalBoardId = result.data.tacticalBoardId;
 
         if (typeof result.data.result !== "undefined") {
             if (existing.result) {
@@ -259,7 +261,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
                             include: { player: { include: { user: { select: { username: true } } } } }
                         } 
                     }
-                }
+                },
+                tacticalBoard: true
             }
         });
 

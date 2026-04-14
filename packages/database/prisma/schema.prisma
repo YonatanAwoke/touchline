@@ -303,6 +303,9 @@ model Match {
 
   videos      Video[]
   todos       Todo[]
+  
+  tacticalBoardId Int?
+  tacticalBoard   TacticalBoard? @relation(fields: [tacticalBoardId], references: [id], onDelete: SetNull)
 
   createdAt   DateTime @default(now())
 }
@@ -466,6 +469,7 @@ model TacticalBoard {
   createdBy        Int?
   user             User?        @relation(fields: [createdBy], references: [id], onDelete: SetNull)
   
+  matches          Match[]
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 }

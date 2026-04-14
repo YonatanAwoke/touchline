@@ -12,7 +12,7 @@ const prisma = globalThis.prisma ?? prismaClientSingleton()
 
 if (process.env.NODE_ENV !== "production") {
   // If the existing singleton is missing the new models, recreate it
-  if (prisma && (!(prisma as any).todo || !(prisma as any).formation)) {
+  if (prisma && (!(prisma as any).todo || !(prisma as any).formation || !(prisma as any).tacticalBoard)) {
     console.warn("[Prisma] New models missing in client. Recreating...");
     globalThis.prisma = prismaClientSingleton()
   } else {

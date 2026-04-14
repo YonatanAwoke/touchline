@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,9 +55,23 @@ const MatchesTraining = () => {
   const [showCreateTraining, setShowCreateTraining] = useState(false);
   const [editingMatch, setEditingMatch] = useState<any>(null);
   const [editingSession, setEditingSession] = useState<any>(null);
+  const navigate = useNavigate();
 
-  const [newMatch, setNewMatch] = useState({ opponent: "", date: "", location: "", teamId: "", competition: "" });
+  const [newMatch, setNewMatch] = useState({ opponent: "", date: "", location: "", teamId: "", competition: "", tacticalBoardId: "" });
   const [newTraining, setNewTraining] = useState({ title: "", date: "", duration: "", type: "TECHNICAL", teamId: "", coachId: "" });
+  
+  // Fetch Tactical Boards
+  const { data: tacticalBoardsData } = useQuery({
+    queryKey: ["tactical-boards", newMatch.teamId],
+    queryFn: async () => {
+      if (!newMatch.teamId) return { items: [] };
+      const res = await fetch(`/api/dashboard/tactical-boards?teamId=${newMatch.teamId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load tactical boards");
+      return res.json();
+    },
+    enabled: !!newMatch.teamId
+  });
+  const tacticalBoards = tacticalBoardsData?.items ?? [];
   
   const [selectedMatchForResult, setSelectedMatchForResult] = useState<any>(null);
   const [matchResultForm, setMatchResultForm] = useState<{
@@ -185,7 +200,7 @@ const MatchesTraining = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["matches"] });
       setShowCreateMatch(false);
-      setNewMatch({ opponent: "", date: "", location: "", teamId: "", competition: "" });
+      setNewMatch({ opponent: "", date: "", location: "", teamId: "", competition: "", tacticalBoardId: "" });
       toast({ title: "Match created successfully" });
     },
     onError: (err: any) => toast({ title: "Error creating match", description: err.message, variant: "destructive" })
@@ -278,6 +293,7 @@ const MatchesTraining = () => {
       matchDate: new Date(newMatch.date).toISOString(),
       venue: newMatch.location,
       competition: newMatch.competition || undefined,
+      tacticalBoardId: newMatch.tacticalBoardId ? Number(newMatch.tacticalBoardId) : undefined,
     };
 
     if (editingMatch) {
@@ -324,6 +340,7 @@ const MatchesTraining = () => {
       location: match.venue || "",
       teamId: String(match.teamId),
       competition: match.competition || "",
+      tacticalBoardId: match.tacticalBoardId ? String(match.tacticalBoardId) : "",
     });
   };
 
@@ -587,7 +604,7 @@ const MatchesTraining = () => {
       </div>
 
       {/* Match Dialog (Create/Edit) */}
-      <Dialog open={showCreateMatch || !!editingMatch} onOpenChange={(open) => { if (!open) { setShowCreateMatch(false); setEditingMatch(null); setNewMatch({opponent: "", date: "", location: "", teamId: "", competition: ""}); }}}>
+      <Dialog open={showCreateMatch || !!editingMatch} onOpenChange={(open) => { if (!open) { setShowCreateMatch(false); setEditingMatch(null); setNewMatch({opponent: "", date: "", location: "", teamId: "", competition: "", tacticalBoardId: ""}); }}}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <div className="flex items-center gap-3">
@@ -649,6 +666,20 @@ const MatchesTraining = () => {
                 <option value="CUP">Cup</option>
                 <option value="FRIENDLY">Friendly</option>
                 <option value="OTHER">Other</option>
+              </select>
+            </div>
+            <div>
+              <Label>Tactical Board (Optional)</Label>
+              <select 
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" 
+                value={newMatch.tacticalBoardId} 
+                onChange={(e) => setNewMatch({...newMatch, tacticalBoardId: e.target.value})}
+                disabled={!newMatch.teamId}
+              >
+                <option value="">No Tactical Board</option>
+                {tacticalBoards.map((tb: any) => (
+                  <option key={tb.id} value={tb.id}>{tb.name}</option>
+                ))}
               </select>
             </div>
             <div className="flex justify-end gap-2 pt-2">
@@ -1027,7 +1058,16 @@ const MatchesTraining = () => {
                 )}
               </div>
               
-              <div className="flex justify-end pt-4 border-t border-border">
+              <div className="flex justify-between items-center pt-4 border-t border-border">
+                {selectedMatchForDetail.tacticalBoardId && (
+                  <Button 
+                    variant="outline" 
+                    className="gap-2"
+                    onClick={() => navigate(`/dashboard/tactical-board?id=${selectedMatchForDetail.tacticalBoardId}`)}
+                  >
+                    <Trophy size={14} /> View Tactical Board
+                  </Button>
+                )}
                 <Button onClick={() => setSelectedMatchForDetail(null)}>Close</Button>
               </div>
             </div>

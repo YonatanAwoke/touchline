@@ -23,6 +23,7 @@ import Schedule from "./pages/Schedule";
 import Settings from "./pages/Settings";
 import Analysis from "./pages/Analysis";
 import TacticalBoard from "./pages/TacticalBoard";
+import Examination from "./pages/Examination";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "./lib/auth";
 
@@ -59,6 +60,7 @@ const App = () => (
             <Route path="/dashboard/schedule" element={<Schedule />} />
             <Route path="/dashboard/analysis" element={<Analysis />} />
             <Route path="/dashboard/tactical-board" element={<TacticalBoard />} />
+            <Route path="/dashboard/examination" element={<Examination />} />
             <Route path="/dashboard/settings" element={<Settings />} />
             <Route path="/early-access" element={<EarlyAccess />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

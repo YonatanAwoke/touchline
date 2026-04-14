@@ -26,20 +26,29 @@ export async function GET(request: Request) {
     const teamId = searchParams.get("teamId");
     
     try {
-        const boards = await prisma.tacticalBoard.findMany({
-            where: {
-                organizationId: auth.session.organizationId,
-                teamId: teamId ? parseInt(teamId) : undefined,
-            },
-            orderBy: { updatedAt: "desc" },
-            include: {
-                user: {
-                    select: { username: true }
+        const [items, total] = await prisma.$transaction([
+            prisma.tacticalBoard.findMany({
+                where: {
+                    organizationId: auth.session.organizationId,
+                    teamId: teamId ? parseInt(teamId) : undefined,
                 },
-                formation: true,
-            }
-        });
-        return NextResponse.json(boards);
+                orderBy: { updatedAt: "desc" },
+                include: {
+                    user: {
+                        select: { username: true }
+                    },
+                    formation: true,
+                }
+            }),
+            prisma.tacticalBoard.count({
+                where: {
+                    organizationId: auth.session.organizationId,
+                    teamId: teamId ? parseInt(teamId) : undefined,
+                }
+            })
+        ]);
+        
+        return NextResponse.json({ items, total });
     } catch (error) {
         console.error("Fetch tactical boards error:", error);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });

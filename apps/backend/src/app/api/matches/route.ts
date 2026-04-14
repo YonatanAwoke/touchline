@@ -90,7 +90,7 @@ export async function POST(request: Request) {
         const result = matchCreateSchema.safeParse(body);
         if (!result.success) return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
 
-        const { teamId, opponent, competition, venue, matchDate, result: matchResultData } = result.data;
+        const { teamId, opponent, competition, venue, matchDate, tacticalBoardId, result: matchResultData } = result.data;
 
         // Verify team exists and belongs to the same org
         const team = await prisma.team.findUnique({ where: { id: teamId } });
@@ -107,6 +107,7 @@ export async function POST(request: Request) {
                 competition: competition as any,
                 venue,
                 matchDate: new Date(matchDate),
+                tacticalBoardId,
                 result: matchResultData ? {
                     create: {
                         homeScore: matchResultData.homeScore,
@@ -133,7 +134,8 @@ export async function POST(request: Request) {
                             include: { player: { include: { user: { select: { username: true } } } } }
                         } 
                     }
-                }
+                },
+                tacticalBoard: true
             }
         });
 
@@ -204,14 +206,14 @@ export async function GET(request: Request) {
             prisma.match.findMany({
                 where,
                 include: {
-                    team: true,
                     result: {
                         include: { 
                             scorers: {
                                 include: { player: { include: { user: { select: { username: true } } } } }
                             } 
                         }
-                    }
+                    },
+                    tacticalBoard: true
                 },
                 skip,
                 take,
