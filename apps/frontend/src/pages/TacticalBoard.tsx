@@ -24,6 +24,7 @@ import {
   Download,
   Save,
   Undo2,
+  Redo2,
   MousePointer2,
   Pencil,
   Plus,
@@ -167,7 +168,9 @@ const TacticalBoard: React.FC = () => {
   const [activeColor, setActiveColor] = useState(COLORS[0].value);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [undoStack, setUndoStack] = useState<Annotation[][]>([]);
-  const [selectedAnnotation, setSelectedAnnotation] = useState<string | null>(null);
+  const [redoStack, setRedoStack] = useState<Annotation[][]>([]);
+  const [showClearMenu, setShowClearMenu] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [instructions, setInstructions] = useState<PlayerInstruction[]>([]);
   const [showFormation, setShowFormation] = useState(true);
   const [activeBoardId, setActiveBoardId] = useState<number | null>(null);
@@ -244,17 +247,70 @@ const TacticalBoard: React.FC = () => {
 
   useEffect(() => { if (clubIdParam && !selectedTeamId) setSelectedTeamId(clubIdParam); }, [clubIdParam]);
 
-  const pushUndo = () => setUndoStack(prev => [...prev.slice(-20), [...annotations]]);
-  const handleUndo = () => { if (undoStack.length === 0) return; setAnnotations(undoStack[undoStack.length - 1]); setUndoStack(prev => prev.slice(0, -1)); };
-  const deleteAnnotation = (id: string) => { pushUndo(); setAnnotations(prev => prev.filter(a => a.id !== id)); setSelectedAnnotation(null); };
-  const clearAll = () => { pushUndo(); setAnnotations([]); setSelectedAnnotation(null); };
+  const pushUndo = (stateOverride?: Annotation[]) => {
+    const stateToPush = stateOverride || [...annotations];
+    setUndoStack(prev => [...prev.slice(-20), stateToPush]);
+    setRedoStack([]);
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const previous = undoStack[undoStack.length - 1];
+    setRedoStack(prev => [...prev, [...annotations]]);
+    setAnnotations(previous);
+    setUndoStack(prev => prev.slice(0, -1));
+    setSelectedIds([]); // Clear selection on undo/redo to avoid confusion
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setUndoStack(prev => [...prev, [...annotations]]);
+    setAnnotations(next);
+    setRedoStack(prev => prev.slice(0, -1));
+    setSelectedIds([]);
+  };
+
+  const deleteAnnotation = (id: string) => {
+    pushUndo();
+    setAnnotations(prev => prev.filter(a => a.id !== id));
+    setSelectedIds(prev => prev.filter(sid => sid !== id));
+  };
+
+  const clearAll = () => {
+    pushUndo();
+    setAnnotations([]);
+    setSelectedIds([]);
+    setShowClearMenu(false);
+  };
+
+  const clearSelected = () => {
+    if (selectedIds.length === 0) return;
+    pushUndo();
+    setAnnotations(prev => prev.filter(a => !selectedIds.includes(a.id)));
+    setSelectedIds([]);
+    setShowClearMenu(false);
+  };
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === "z" && !e.shiftKey) { e.preventDefault(); handleUndo(); }
+      if (mod && e.key === "z" && e.shiftKey) { e.preventDefault(); handleRedo(); }
+      if (mod && e.key === "y") { e.preventDefault(); handleRedo(); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  });
 
   // Update annotation property
   const updateAnnotation = (id: string, updates: Partial<BaseAnnotation>) => {
     setAnnotations(prev => prev.map(a => a.id === id ? { ...a, ...updates } as Annotation : a));
   };
 
-  const selectedAnn = annotations.find(a => a.id === selectedAnnotation);
+  const selectedAnns = annotations.filter(a => selectedIds.includes(a.id));
+  const latestSelected = selectedAnns.length > 0 ? selectedAnns[selectedAnns.length - 1] : null;
 
   const getSvgPoint = useCallback((e: React.MouseEvent | React.PointerEvent): Point | null => {
     if (!svgRef.current) return null;
@@ -322,7 +378,10 @@ const TacticalBoard: React.FC = () => {
 
     const pt = getSvgPoint(e);
     if (!pt) return;
-    pushUndo();
+    
+    // Capture state before changes
+    const currentAnnotations = [...annotations];
+    pushUndo(currentAnnotations);
 
     const base = { color: activeColor, playerId: targetPlayerId === "team" ? undefined : targetPlayerId, scale: 1, rotation: 0 };
 
@@ -340,7 +399,7 @@ const TacticalBoard: React.FC = () => {
     } else if (activeTool === "freehand" && currentPts.length > 1) {
       setAnnotations(prev => [...prev, { ...base, type: "freehand", id: uid(), points: currentPts }]);
     }
-  }, [activeTool, activeColor, getSvgPoint, targetPlayerId]);
+  }, [activeTool, activeColor, getSvgPoint, targetPlayerId, annotations]);
 
   // Instructions
   const addInstruction = () => setInstructions(prev => [...prev, { playerName: "", role: "", instruction: "" }]);
@@ -349,7 +408,7 @@ const TacticalBoard: React.FC = () => {
 
   // ─── Render annotation SVG ─────────────────────────────────────────────────
   const renderAnnotation = (ann: Annotation) => {
-    const isSelected = selectedAnnotation === ann.id;
+    const isSelected = selectedIds.includes(ann.id);
     const scale = ann.scale ?? 1;
     const rotation = ann.rotation ?? 0;
     const center = getAnnotationCenter(ann);
@@ -357,7 +416,16 @@ const TacticalBoard: React.FC = () => {
     const handleAnnotationPointerDown = (e: React.PointerEvent) => {
       if (activeTool !== "select") return;
       e.stopPropagation();
-      setSelectedAnnotation(ann.id);
+      
+      const isMulti = e.shiftKey || e.metaKey || e.ctrlKey;
+      if (isMulti) {
+        setSelectedIds(prev => prev.includes(ann.id) ? prev.filter(id => id !== ann.id) : [...prev, ann.id]);
+      } else {
+        if (!selectedIds.includes(ann.id)) {
+          setSelectedIds([ann.id]);
+        }
+      }
+
       const pt = getSvgPoint(e);
       if (!pt) return;
       svgRef.current?.setPointerCapture(e.pointerId);
@@ -580,27 +648,46 @@ const TacticalBoard: React.FC = () => {
 
                 <div className="w-px h-6 bg-border mx-1" />
 
-                <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={handleUndo} disabled={undoStack.length === 0}>
+                <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={handleUndo} disabled={undoStack.length === 0} title="Undo (Ctrl+Z)">
                   <Undo2 size={14} /> Undo
                 </Button>
-                <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={clearAll} disabled={annotations.length === 0}>
-                  <X size={14} /> Clear
+                <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={handleRedo} disabled={redoStack.length === 0} title="Redo (Ctrl+Y / Ctrl+Shift+Z)">
+                  <Redo2 size={14} /> Redo
                 </Button>
+
+                <div className="relative">
+                  <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setShowClearMenu(prev => !prev)} disabled={annotations.length === 0}>
+                    <X size={14} /> Clear
+                  </Button>
+                  {showClearMenu && (
+                    <div className="absolute top-full left-0 mt-1 z-50 bg-popover border border-border rounded-lg shadow-lg p-1 min-w-[160px]">
+                      <button className="w-full text-left px-3 py-1.5 text-xs rounded hover:bg-accent hover:text-accent-foreground transition-colors" onClick={clearAll}>
+                        Clear All
+                      </button>
+                      <button className="w-full text-left px-3 py-1.5 text-xs rounded hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none" onClick={clearSelected} disabled={selectedIds.length === 0}>
+                        Clear Selected
+                      </button>
+                      <button className="w-full text-left px-3 py-1.5 text-xs rounded hover:bg-accent hover:text-accent-foreground transition-colors" onClick={() => setShowClearMenu(false)}>
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Resize & Rotation Controls for selected annotation */}
-          {selectedAnn && (
+          {/* Resize & Rotation Controls for latest selected annotation */}
+          {latestSelected && (
             <Card className="border-primary/30 bg-primary/5">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Badge variant="secondary" className="text-[10px] capitalize gap-1">
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: selectedAnn.color }} />
-                    {selectedAnn.type}
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: latestSelected.color }} />
+                    {latestSelected.type}
                   </Badge>
-                  <span className="text-xs text-muted-foreground">— Transform Controls</span>
-                  <Button variant="ghost" size="sm" className="h-7 p-2 ml-auto text-destructive hover:text-destructive" onClick={() => deleteAnnotation(selectedAnn.id)}>
+                  <span className="text-xs text-muted-foreground">— Transform Controls {selectedIds.length > 1 && `(${selectedIds.length} items)`}</span>
+                  <Button variant="ghost" size="sm" className="h-7 p-2 ml-auto text-destructive hover:text-destructive" onClick={() => deleteAnnotation(latestSelected.id)}>
                     <Trash2 size={14} />
                   </Button>
                 </div>
@@ -610,12 +697,12 @@ const TacticalBoard: React.FC = () => {
                     <div className="flex items-center gap-1.5">
                       <Maximize2 size={12} className="text-primary" />
                       <Label className="text-[11px]">Size</Label>
-                      <span className="text-[10px] text-muted-foreground ml-auto">{((selectedAnn.scale ?? 1) * 100).toFixed(0)}%</span>
+                      <span className="text-[10px] text-muted-foreground ml-auto">{((latestSelected.scale ?? 1) * 100).toFixed(0)}%</span>
                     </div>
                     <Slider
-                      value={[(selectedAnn.scale ?? 1) * 100]}
-                      min={30} max={300} step={5}
-                      onValueChange={([v]) => updateAnnotation(selectedAnn.id, { scale: v / 100 })}
+                      value={[(latestSelected.scale ?? 1) * 100]}
+                      min={10} max={400} step={5}
+                      onValueChange={([v]) => updateAnnotation(latestSelected.id, { scale: v / 100 })}
                     />
                   </div>
                   {/* Rotation */}
@@ -623,19 +710,19 @@ const TacticalBoard: React.FC = () => {
                     <div className="flex items-center gap-1.5">
                       <RotateCw size={12} className="text-primary" />
                       <Label className="text-[11px]">Rotate</Label>
-                      <span className="text-[10px] text-muted-foreground ml-auto">{(selectedAnn.rotation ?? 0).toFixed(0)}°</span>
+                      <span className="text-[10px] text-muted-foreground ml-auto">{(latestSelected.rotation ?? 0).toFixed(0)}°</span>
                     </div>
                     <Slider
-                      value={[selectedAnn.rotation ?? 0]}
+                      value={[latestSelected.rotation ?? 0]}
                       min={0} max={360} step={5}
-                      onValueChange={([v]) => updateAnnotation(selectedAnn.id, { rotation: v })}
+                      onValueChange={([v]) => updateAnnotation(latestSelected.id, { rotation: v })}
                     />
                   </div>
                 </div>
                 {/* Link player */}
                 <div className="flex items-center gap-2 mt-3">
                   <Label className="text-[10px] text-muted-foreground">Linked Player</Label>
-                  <Select value={String(selectedAnn.playerId || "team")} onValueChange={(val) => updateAnnotation(selectedAnn.id, { playerId: val === "team" ? undefined : val })}>
+                  <Select value={String(latestSelected.playerId || "team")} onValueChange={(val) => updateAnnotation(latestSelected.id, { playerId: val === "team" ? undefined : val })}>
                     <SelectTrigger className="h-7 text-[10px] w-32"><SelectValue placeholder="Link to..." /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="team">Unlink</SelectItem>
@@ -717,9 +804,15 @@ const TacticalBoard: React.FC = () => {
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {annotations.map((ann) => (
-                    <button key={ann.id} onClick={() => setSelectedAnnotation(ann.id === selectedAnnotation ? null : ann.id)}
+                    <button key={ann.id} onClick={() => {
+                      if (selectedIds.includes(ann.id)) {
+                        setSelectedIds(prev => prev.filter(id => id !== ann.id));
+                      } else {
+                        setSelectedIds(prev => [...prev, ann.id]);
+                      }
+                    }}
                       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium transition-colors ${
-                        selectedAnnotation === ann.id ? "bg-primary/15 text-primary ring-1 ring-primary/30" : "bg-muted text-muted-foreground hover:bg-secondary"
+                        selectedIds.includes(ann.id) ? "bg-primary/15 text-primary ring-1 ring-primary/30" : "bg-muted text-muted-foreground hover:bg-secondary"
                       }`}>
                       <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: ann.color }} />
                       {ann.type === "text" ? `"${(ann as TextAnnotation).text}"` : ann.type}

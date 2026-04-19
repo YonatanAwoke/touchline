@@ -102,7 +102,17 @@ export async function GET(request: Request) {
 
         // include shallow counts
         const [items, total] = await prisma.$transaction([
-            prisma.session.findMany({ where, include: { participants: { select: { id: true } }, videos: { select: { id: true, status: true } } }, skip, take, orderBy: { date: 'desc' } }),
+            prisma.session.findMany({ 
+                where, 
+                include: { 
+                    team: true,
+                    participants: { select: { id: true } }, 
+                    videos: { select: { id: true, status: true } } 
+                }, 
+                skip, 
+                take, 
+                orderBy: { date: 'desc' } 
+            }),
             prisma.session.count({ where })
         ]);
 

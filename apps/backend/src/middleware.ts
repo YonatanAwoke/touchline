@@ -36,5 +36,8 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-    matcher: ['/api/:path*'],
+    // Exclude the player examine endpoint from middleware to bypass
+    // the hardcoded 10MB middleware body size limit for video uploads.
+    // The endpoint explicitly calls requireAuth() so security is maintained.
+    matcher: ['/api/((?!examinations/player).*)'],
 };

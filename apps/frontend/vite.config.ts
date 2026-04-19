@@ -17,6 +17,14 @@ export default defineConfig(({ mode }) => ({
         target: "http://localhost:3001",
         changeOrigin: true,
         secure: false,
+        // Forward cookies so session auth works through the proxy
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq, req) => {
+            if (req.headers.cookie) {
+              proxyReq.setHeader("cookie", req.headers.cookie);
+            }
+          });
+        },
       },
     },
   },

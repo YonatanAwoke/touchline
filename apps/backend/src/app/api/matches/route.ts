@@ -206,6 +206,7 @@ export async function GET(request: Request) {
             prisma.match.findMany({
                 where,
                 include: {
+                    team: true,
                     result: {
                         include: { 
                             scorers: {

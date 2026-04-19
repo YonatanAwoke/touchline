@@ -302,3 +302,64 @@ export const tacticalBoardUpdateSchema = z.object({
 
 export type TacticalBoardCreateInput = z.infer<typeof tacticalBoardCreateSchema>;
 export type TacticalBoardUpdateInput = z.infer<typeof tacticalBoardUpdateSchema>;
+
+/**
+ * Match Analysis schemas
+ */
+export const matchAnalysisCreateSchema = z.object({
+    title: z.string().min(1),
+    date: z.string(), // ISO date
+    matchId: z.number().int().optional().nullable(),
+    homeTeam: z.string().min(1),
+    awayTeam: z.string().min(1),
+    notes: z.string().optional().nullable(),
+    inputMode: z.enum(["manual", "video"]).optional().default("manual"),
+    videoId: z.number().int().optional().nullable(),
+    matchStats: z.any(),
+    matchEvents: z.array(z.any()),
+    organizationId: z.number().int(),
+});
+
+export const matchAnalysisUpdateSchema = z.object({
+    title: z.string().min(1).optional(),
+    date: z.string().optional(),
+    matchId: z.number().int().optional().nullable(),
+    homeTeam: z.string().min(1).optional(),
+    awayTeam: z.string().min(1).optional(),
+    notes: z.string().optional().nullable(),
+    inputMode: z.enum(["manual", "video"]).optional(),
+    videoId: z.number().int().optional().nullable(),
+    matchStats: z.any().optional(),
+    matchEvents: z.array(z.any()).optional(),
+});
+
+/**
+ * Player Analysis schemas
+ */
+export const playerAnalysisCreateSchema = z.object({
+    title: z.string().min(1),
+    date: z.string(), // ISO date
+    playerId: z.number().int(),
+    sessionId: z.number().int().optional().nullable(),
+    notes: z.string().optional().nullable(),
+    inputMode: z.enum(["manual", "video"]).optional().default("manual"),
+    videoId: z.number().int().optional().nullable(),
+    analysisData: z.any(),
+    organizationId: z.number().int(),
+});
+
+export const playerAnalysisUpdateSchema = z.object({
+    title: z.string().min(1).optional(),
+    date: z.string().optional(),
+    playerId: z.number().int().optional(),
+    sessionId: z.number().int().optional().nullable(),
+    notes: z.string().optional().nullable(),
+    inputMode: z.enum(["manual", "video"]).optional(),
+    videoId: z.number().int().optional().nullable(),
+    analysisData: z.any().optional(),
+});
+
+export type MatchAnalysisCreateInput = z.infer<typeof matchAnalysisCreateSchema>;
+export type MatchAnalysisUpdateInput = z.infer<typeof matchAnalysisUpdateSchema>;
+export type PlayerAnalysisCreateInput = z.infer<typeof playerAnalysisCreateSchema>;
+export type PlayerAnalysisUpdateInput = z.infer<typeof playerAnalysisUpdateSchema>;
