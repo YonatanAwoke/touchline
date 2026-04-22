@@ -13,6 +13,7 @@ import {
   SidebarTrigger,
   SidebarHeader,
   SidebarFooter,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -51,6 +52,34 @@ interface DashboardLayoutProps {
   subtitle?: string;
 }
 
+const SidebarBrand: React.FC = () => {
+  const { state } = useSidebar();
+  const expanded = state === "expanded";
+  return (
+    <div className="relative flex h-8 items-center justify-center overflow-hidden">
+      {/* Collapsed: standalone T */}
+      <span
+        className={`absolute text-2xl font-black italic text-primary transition-all duration-300 ${
+          expanded ? "-translate-x-3 opacity-0" : "translate-x-0 opacity-100"
+        }`}
+        aria-hidden={expanded}
+      >
+        T
+      </span>
+      {/* Expanded: full TOUCHLINE wordmark */}
+      <span
+        className={`absolute flex items-baseline text-xl font-black italic tracking-tight text-primary transition-all duration-300 ${
+          expanded ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"
+        }`}
+        aria-hidden={!expanded}
+      >
+        <span className="text-primary">T</span>
+        <span className="text-foreground">OUCHLINE</span>
+      </span>
+    </div>
+  );
+};
+
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title, subtitle }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -62,8 +91,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title, subt
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <Sidebar collapsible="icon">
-          <SidebarHeader className="items-center">
-            <span className="text-xl font-black italic text-primary">T</span>
+          <SidebarHeader className="items-center px-2">
+            <SidebarBrand />
           </SidebarHeader>
 
           <SidebarContent>

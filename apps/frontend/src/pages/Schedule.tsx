@@ -516,9 +516,11 @@ const Schedule = () => {
       ? `${format(weekStart, "MMM d")} – ${format(addDays(weekStart, 6), "MMM d, yyyy")}`
       : format(currentDate, "MMMM yyyy");
 
+  const sidebarHasContent = !!selectedEvent || todayEvents.length > 0;
+
   return (
     <DashboardLayout title="Schedule" subtitle="Manage your calendar and upcoming events">
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <div className={`grid gap-6 transition-all duration-300 ${sidebarHasContent ? "lg:grid-cols-[1fr_320px]" : "lg:grid-cols-1"}`}>
         {/* Main Calendar */}
         <Card className="border-border">
           <CardContent className="p-5">
@@ -737,35 +739,37 @@ const Schedule = () => {
         </Card>
 
         {/* Sidebar */}
-        <div className="space-y-6">
-          <SessionDetailSidebar
-            selectedEvent={selectedEvent}
-            setSelectedEvent={setSelectedEvent}
-            sessionDetail={sessionDetail}
-            isLoadingDetail={isLoadingDetail}
-            localAttendance={localAttendance}
-            setLocalAttendance={setLocalAttendance}
-            updateAttendanceMutation={updateAttendanceMutation}
-            allPlayers={allPlayers}
-            addParticipantMutation={addParticipantMutation}
-            removeParticipantMutation={removeParticipantMutation}
-            todosQuery={todosQuery}
-            newTodoText={newTodoText}
-            setNewTodoText={setNewTodoText}
-            createTodoMutation={createTodoMutation}
-            toggleTodoMutation={toggleTodoMutation}
-            deleteTodoMutation={deleteTodoMutation}
-            updateTodoMutation={updateTodoMutation}
-            editingTodoId={editingTodoId}
-            setEditingTodoId={setEditingTodoId}
-            editingTodoText={editingTodoText}
-            setEditingTodoText={setEditingTodoText}
-            setShowAddEvent={setShowAddEvent}
-            setIsRescheduling={setIsRescheduling}
-            setNewEvent={setNewEvent}
-            categoryConfig={categoryConfig}
-          />
-        </div>
+        {sidebarHasContent && (
+          <div className="space-y-6">
+            <SessionDetailSidebar
+              selectedEvent={selectedEvent}
+              setSelectedEvent={setSelectedEvent}
+              sessionDetail={sessionDetail}
+              isLoadingDetail={isLoadingDetail}
+              localAttendance={localAttendance}
+              setLocalAttendance={setLocalAttendance}
+              updateAttendanceMutation={updateAttendanceMutation}
+              allPlayers={allPlayers}
+              addParticipantMutation={addParticipantMutation}
+              removeParticipantMutation={removeParticipantMutation}
+              todosQuery={todosQuery}
+              newTodoText={newTodoText}
+              setNewTodoText={setNewTodoText}
+              createTodoMutation={createTodoMutation}
+              toggleTodoMutation={toggleTodoMutation}
+              deleteTodoMutation={deleteTodoMutation}
+              updateTodoMutation={updateTodoMutation}
+              editingTodoId={editingTodoId}
+              setEditingTodoId={setEditingTodoId}
+              editingTodoText={editingTodoText}
+              setEditingTodoText={setEditingTodoText}
+              setShowAddEvent={setShowAddEvent}
+              setIsRescheduling={setIsRescheduling}
+              setNewEvent={setNewEvent}
+              categoryConfig={categoryConfig}
+            />
+          </div>
+        )}
       </div>
 
       <AddEventDialog

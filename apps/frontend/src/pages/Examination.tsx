@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,14 +10,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   Flame, CornerDownRight, ShieldAlert, Target, Zap, ArrowUp, Activity, User, Timer, TrendingUp, Plus, Upload, Edit3, Trash2, Eye, ArrowLeft, Users, X, Loader2, FileVideo,
+  ChevronLeft, ChevronRight, Download, FileImage, FileText, Share2, Search, ArrowUpDown,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend,
 } from "recharts";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import PlayerRatingCard, { deriveMetrics } from "@/components/examination/PlayerRatingCard";
+import ReportHeader from "@/components/examination/ReportHeader";
+import { exportNodeAsImage, exportNodeAsPdf, exportNodeAsSquareImage } from "@/lib/exportReport";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis } from "@/components/ui/pagination";
 
 /* ───────── TYPES ───────── */
 
@@ -276,97 +283,219 @@ const HeatMap: React.FC = () => (
   </Card>
 );
 
+/* ───────── EXPORT TOOLBAR (shared) ───────── */
+
+const ExportToolbar: React.FC<{
+  onPrev?: () => void;
+  onNext?: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
+  positionLabel?: string;
+  onExportPdf: () => void;
+  onExportImage: () => void;
+  isExporting?: boolean;
+}> = ({ onPrev, onNext, hasPrev, hasNext, positionLabel, onExportPdf, onExportImage, isExporting }) => (
+  <div className="flex flex-wrap items-center gap-2">
+    {(onPrev || onNext) && (
+      <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-1">
+        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onPrev} disabled={!hasPrev}>
+          <ChevronLeft className="h-4 w-4" /> Prev
+        </Button>
+        {positionLabel && <span className="px-1 text-xs text-muted-foreground">{positionLabel}</span>}
+        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onNext} disabled={!hasNext}>
+          Next <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    )}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" className="h-8 gap-1.5" disabled={isExporting}>
+          {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          Export
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onExportPdf} disabled={isExporting}>
+          <FileText className="h-4 w-4 mr-2" /> Export as PDF
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onExportImage} disabled={isExporting}>
+          <FileImage className="h-4 w-4 mr-2" /> Export as Image
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  </div>
+);
+
 /* ───────── MATCH DETAIL VIEW ───────── */
 
-const MatchDetailView: React.FC<{ analysis: MatchAnalysis; onBack: () => void }> = ({ analysis, onBack }) => {
+const MatchDetailView: React.FC<{
+  analysis: MatchAnalysis;
+  allAnalyses: MatchAnalysis[];
+  onBack: () => void;
+  onNavigate: (a: MatchAnalysis) => void;
+}> = ({ analysis, allAnalyses, onBack, onNavigate }) => {
   const { matchStats: ms, matchEvents: evts } = analysis;
   const corners = { home: evts.filter(e => e.type === "corner" && e.team === "home").length, away: evts.filter(e => e.type === "corner" && e.team === "away").length };
   const fouls = { home: evts.filter(e => e.type === "foul" && e.team === "home").length, away: evts.filter(e => e.type === "foul" && e.team === "away").length };
   const freeKicks = { home: evts.filter(e => e.type === "freeKick" && e.team === "home").length, away: evts.filter(e => e.type === "freeKick" && e.team === "away").length };
 
+  const reportRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const idx = allAnalyses.findIndex(a => a.id === analysis.id);
+  const hasPrev = idx > 0;
+  const hasNext = idx >= 0 && idx < allAnalyses.length - 1;
+  const goPrev = () => hasPrev && onNavigate(allAnalyses[idx - 1]);
+  const goNext = () => hasNext && onNavigate(allAnalyses[idx + 1]);
+
+  const fileBase = `match-${analysis.title.replace(/\s+/g, "-").toLowerCase()}-${analysis.date}`;
+  const handleExportPdf = async () => {
+    if (!reportRef.current) return;
+    setIsExporting(true);
+    try { await exportNodeAsPdf(reportRef.current, fileBase); toast.success("PDF exported"); }
+    catch (e) { toast.error("Export failed"); } finally { setIsExporting(false); }
+  };
+  const handleExportImage = async () => {
+    if (!reportRef.current) return;
+    setIsExporting(true);
+    try { await exportNodeAsImage(reportRef.current, fileBase); toast.success("Image exported"); }
+    catch (e) { toast.error("Export failed"); } finally { setIsExporting(false); }
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5" /></Button>
-        <div>
-          <h2 className="text-xl font-bold text-foreground">{analysis.title}</h2>
-          <p className="text-sm text-muted-foreground">{analysis.homeTeam} vs {analysis.awayTeam} · {new Date(analysis.date).toLocaleDateString(undefined, { dateStyle: 'long' })}</p>
-        </div>
-      </div>
-
-      {analysis.notes && (
-        <Card className="border-border bg-card"><CardContent className="p-4 text-sm text-muted-foreground">{analysis.notes}</CardContent></Card>
-      )}
-
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {[
-          { icon: CornerDownRight, label: "Corners", home: corners.home, away: corners.away },
-          { icon: ShieldAlert, label: "Fouls", home: fouls.home, away: fouls.away },
-          { icon: Target, label: "Free Kicks", home: freeKicks.home, away: freeKicks.away },
-          { icon: Zap, label: "Dangerous Attacks", home: ms.home.dangerousAttacks, away: ms.away.dangerousAttacks },
-        ].map((s) => (
-          <Card key={s.label} className="border-border bg-card">
-            <CardContent className="flex flex-col items-center gap-2 p-4">
-              <s.icon className="h-6 w-6 text-primary" />
-              <span className="text-xs text-muted-foreground">{s.label}</span>
-              <div className="flex items-center gap-3">
-                <span className="text-lg font-bold text-foreground">{s.home}</span>
-                <span className="text-xs text-muted-foreground">vs</span>
-                <span className="text-lg font-bold text-destructive">{s.away}</span>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <HeatMap />
-
-      <Card className="border-border bg-card">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center justify-between">
-            <span>Match Statistics</span>
-            <div className="flex items-center gap-4 text-sm font-normal">
-              <div className="flex items-center gap-1.5"><div className="h-3 w-3 rounded-sm bg-muted-foreground/70" /><span className="text-muted-foreground">Home</span></div>
-              <div className="flex items-center gap-1.5"><div className="h-3 w-3 rounded-sm bg-destructive/80" /><span className="text-muted-foreground">Away</span></div>
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-0">
-          {statLabels.map((s) => <StatBar key={s.key} label={s.label} homeVal={ms.home[s.key]} awayVal={ms.away[s.key]} isPercent={s.key === "possession"} />)}
-        </CardContent>
-      </Card>
-
-      <Card className="border-border bg-card">
-        <CardHeader><CardTitle className="text-lg">Match Events Timeline</CardTitle></CardHeader>
-        <CardContent>
-          <div className="relative">
-            <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
-            <div className="space-y-3 pl-10">
-              {evts.length > 0 ? evts.map((ev, i) => (
-                <div key={i} className="relative flex items-center gap-3">
-                  <div className={`absolute -left-6 h-3 w-3 rounded-full ${ev.team === "home" ? "bg-primary" : "bg-destructive"}`} />
-                  <Badge variant="outline" className="text-xs">{ev.minute}'</Badge>
-                  <span className="text-sm capitalize text-muted-foreground">{ev.type.replace("freeKick", "Free Kick")}</span>
-                  <span className="text-sm font-medium text-foreground">{ev.player}</span>
-                  <Badge variant="secondary" className="text-xs ml-auto">{ev.team}</Badge>
-                </div>
-              )) : (
-                <p className="text-sm text-muted-foreground py-4">No events recorded for this match.</p>
-              )}
-            </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5" /></Button>
+          <div>
+            <h2 className="text-xl font-bold text-foreground">{analysis.title}</h2>
+            <p className="text-sm text-muted-foreground">{analysis.homeTeam} vs {analysis.awayTeam} · {new Date(analysis.date).toLocaleDateString(undefined, { dateStyle: 'long' })}</p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+        <ExportToolbar
+          onPrev={goPrev} onNext={goNext} hasPrev={hasPrev} hasNext={hasNext}
+          positionLabel={idx >= 0 ? `${idx + 1} / ${allAnalyses.length}` : undefined}
+          onExportPdf={handleExportPdf} onExportImage={handleExportImage} isExporting={isExporting}
+        />
+      </div>
+
+      <div ref={reportRef} className="space-y-6 bg-background p-6 rounded-lg">
+        <ReportHeader
+          title={analysis.title}
+          subtitle={`${analysis.homeTeam} vs ${analysis.awayTeam}`}
+          date={new Date(analysis.date).toLocaleDateString(undefined, { dateStyle: 'long' })}
+          badge="Match Analysis"
+        />
+
+        {analysis.notes && (
+          <Card className="border-border bg-card"><CardContent className="p-4 text-sm text-muted-foreground">{analysis.notes}</CardContent></Card>
+        )}
+
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {[
+            { icon: CornerDownRight, label: "Corners", home: corners.home, away: corners.away },
+            { icon: ShieldAlert, label: "Fouls", home: fouls.home, away: fouls.away },
+            { icon: Target, label: "Free Kicks", home: freeKicks.home, away: freeKicks.away },
+            { icon: Zap, label: "Dangerous Attacks", home: ms.home.dangerousAttacks, away: ms.away.dangerousAttacks },
+          ].map((s) => (
+            <Card key={s.label} className="border-border bg-card">
+              <CardContent className="flex flex-col items-center gap-2 p-4">
+                <s.icon className="h-6 w-6 text-primary" />
+                <span className="text-xs text-muted-foreground">{s.label}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-lg font-bold text-foreground">{s.home}</span>
+                  <span className="text-xs text-muted-foreground">vs</span>
+                  <span className="text-lg font-bold text-destructive">{s.away}</span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <HeatMap />
+
+        <Card className="border-border bg-card">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center justify-between">
+              <span>Match Statistics</span>
+              <div className="flex items-center gap-4 text-sm font-normal">
+                <div className="flex items-center gap-1.5"><div className="h-3 w-3 rounded-sm bg-muted-foreground/70" /><span className="text-muted-foreground">Home</span></div>
+                <div className="flex items-center gap-1.5"><div className="h-3 w-3 rounded-sm bg-destructive/80" /><span className="text-muted-foreground">Away</span></div>
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-0">
+            {statLabels.map((s) => <StatBar key={s.key} label={s.label} homeVal={ms.home[s.key]} awayVal={ms.away[s.key]} isPercent={s.key === "possession"} />)}
+          </CardContent>
+        </Card>
+
+        <Card className="border-border bg-card">
+          <CardHeader><CardTitle className="text-lg">Match Events Timeline</CardTitle></CardHeader>
+          <CardContent>
+            <div className="relative">
+              <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
+              <div className="space-y-3 pl-10">
+                {evts.length > 0 ? evts.map((ev, i) => (
+                  <div key={i} className="relative flex items-center gap-3">
+                    <div className={`absolute -left-6 h-3 w-3 rounded-full ${ev.team === "home" ? "bg-primary" : "bg-destructive"}`} />
+                    <Badge variant="outline" className="text-xs">{ev.minute}'</Badge>
+                    <span className="text-sm capitalize text-muted-foreground">{ev.type.replace("freeKick", "Free Kick")}</span>
+                    <span className="text-sm font-medium text-foreground">{ev.player}</span>
+                    <Badge variant="secondary" className="text-xs ml-auto">{ev.team}</Badge>
+                  </div>
+                )) : (
+                  <p className="text-sm text-muted-foreground py-4">No events recorded for this match.</p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };
 
-const TrainingDetailView: React.FC<{ analysis: TrainingAnalysis; allAnalyses: TrainingAnalysis[]; onBack: () => void; players: any[] }> = ({ analysis, allAnalyses, onBack, players }) => {
+const TrainingDetailView: React.FC<{ analysis: TrainingAnalysis; allAnalyses: TrainingAnalysis[]; onBack: () => void; players: any[]; onNavigate: (a: TrainingAnalysis) => void }> = ({ analysis, allAnalyses, onBack, players, onNavigate }) => {
   const [compareMode, setCompareMode] = useState(false);
   const [comparePlayerId, setComparePlayerId] = useState<string | number>("");
   const player = players.find(p => p.id === analysis.playerId)!;
   const playerName = player?.user?.username || player?.name || `Player ${analysis.playerId}`;
+  const teamName = player?.team?.name || player?.club?.name || "—";
   const data = analysis.analysisData;
+
+  const reportRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+
+  const idx = allAnalyses.findIndex(a => a.id === analysis.id);
+  const hasPrev = idx > 0;
+  const hasNext = idx >= 0 && idx < allAnalyses.length - 1;
+  const goPrev = () => hasPrev && onNavigate(allAnalyses[idx - 1]);
+  const goNext = () => hasNext && onNavigate(allAnalyses[idx + 1]);
+
+  const fileBase = `training-${playerName.replace(/\s+/g, "-").toLowerCase()}-${analysis.date}`;
+  const handleExportPdf = async () => {
+    if (!reportRef.current) return;
+    setIsExporting(true);
+    try { await exportNodeAsPdf(reportRef.current, fileBase); toast.success("PDF exported"); }
+    catch { toast.error("Export failed"); } finally { setIsExporting(false); }
+  };
+  const handleExportImage = async () => {
+    if (!reportRef.current) return;
+    setIsExporting(true);
+    try { await exportNodeAsImage(reportRef.current, fileBase); toast.success("Image exported"); }
+    catch { toast.error("Export failed"); } finally { setIsExporting(false); }
+  };
+  const handleShareCard = async () => {
+    if (!cardRef.current) return;
+    setIsSharing(true);
+    try {
+      await exportNodeAsSquareImage(cardRef.current, `${fileBase}-card`, 1080);
+      toast.success("Share card downloaded");
+    } catch { toast.error("Share card export failed"); }
+    finally { setIsSharing(false); }
+  };
 
   // Build comparison radar data
   const compareAnalysis = allAnalyses.find(a => a.playerId === Number(comparePlayerId));
@@ -389,104 +518,137 @@ const TrainingDetailView: React.FC<{ analysis: TrainingAnalysis; allAnalyses: Tr
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5" /></Button>
-        <div className="flex-1">
-          <h2 className="text-xl font-bold text-foreground">{analysis.title}</h2>
-          <p className="text-sm text-muted-foreground">{playerName} · {player.position} · {new Date(analysis.date).toLocaleDateString(undefined, { dateStyle: 'long' })}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5" /></Button>
+          <div className="flex-1">
+            <h2 className="text-xl font-bold text-foreground">{analysis.title}</h2>
+            <p className="text-sm text-muted-foreground">{playerName} · {player?.position} · {new Date(analysis.date).toLocaleDateString(undefined, { dateStyle: 'long' })}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={handleShareCard} disabled={isSharing}>
+            {isSharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+            Share Card
+          </Button>
+          <ExportToolbar
+            onPrev={goPrev} onNext={goNext} hasPrev={hasPrev} hasNext={hasNext}
+            positionLabel={idx >= 0 ? `${idx + 1} / ${allAnalyses.length}` : undefined}
+            onExportPdf={handleExportPdf} onExportImage={handleExportImage} isExporting={isExporting}
+          />
         </div>
       </div>
 
-      {analysis.notes && (
-        <Card className="border-border bg-card"><CardContent className="p-4 text-sm text-muted-foreground">{analysis.notes}</CardContent></Card>
-      )}
+      <div ref={reportRef} className="space-y-6 bg-background p-6 rounded-lg">
+        <ReportHeader
+          title={analysis.title}
+          subtitle={`${playerName} · ${player?.position || ""}${teamName !== "—" ? ` · ${teamName}` : ""}`}
+          date={new Date(analysis.date).toLocaleDateString(undefined, { dateStyle: 'long' })}
+          badge="Player Examination"
+        />
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
-        <MetricCard icon={<Zap className="h-5 w-5" />} label="Top Speed" value={data.summary.topSpeed?.toFixed(1) || "0.0"} unit="m/s" />
-        <MetricCard icon={<TrendingUp className="h-5 w-5" />} label="Avg Speed" value={data.summary.avgSpeed?.toFixed(1) || "0.0"} unit="m/s" />
-        <MetricCard icon={<ArrowUp className="h-5 w-5" />} label="Max Jump" value={String(data.summary.maxJump || 0)} unit="cm" />
-        <MetricCard icon={<ArrowUp className="h-5 w-5" />} label="Avg Jump" value={data.summary.avgJump?.toFixed(1) || "0.0"} unit="cm" />
-        <MetricCard icon={<Activity className="h-5 w-5" />} label="Distance" value={String(data.summary.distance || 0)} unit="m" />
-        <MetricCard icon={<Timer className="h-5 w-5" />} label="Sprints" value={String(data.summary.sprints || 0)} unit="" />
-      </div>
+        {analysis.notes && (
+          <Card className="border-border bg-card"><CardContent className="p-4 text-sm text-muted-foreground">{analysis.notes}</CardContent></Card>
+        )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="border-border bg-card">
-          <CardHeader><CardTitle className="text-lg">Speed Over Time</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              {data.speed.length > 0 ? (
-                <LineChart data={data.speed}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="time" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-                  <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} unit=" m/s" />
-                  <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-                  <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3, fill: "hsl(var(--primary))" }} name="Speed" />
-                </LineChart>
-              ) : (
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No speed data available.</div>
-              )}
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        {/* Player rating card + summary metrics side by side */}
+        <div className="grid gap-6 lg:grid-cols-[auto_1fr] items-start">
+          <PlayerRatingCard
+            ref={cardRef}
+            playerName={playerName}
+            position={player?.position || "—"}
+            team={teamName !== "—" ? teamName : undefined}
+            movement={data.movement}
+            summary={data.summary}
+          />
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <MetricCard icon={<Zap className="h-5 w-5" />} label="Top Speed" value={data.summary.topSpeed?.toFixed(1) || "0.0"} unit="m/s" />
+            <MetricCard icon={<TrendingUp className="h-5 w-5" />} label="Avg Speed" value={data.summary.avgSpeed?.toFixed(1) || "0.0"} unit="m/s" />
+            <MetricCard icon={<ArrowUp className="h-5 w-5" />} label="Max Jump" value={String(data.summary.maxJump || 0)} unit="cm" />
+            <MetricCard icon={<ArrowUp className="h-5 w-5" />} label="Avg Jump" value={data.summary.avgJump?.toFixed(1) || "0.0"} unit="cm" />
+            <MetricCard icon={<Activity className="h-5 w-5" />} label="Distance" value={String(data.summary.distance || 0)} unit="m" />
+            <MetricCard icon={<Timer className="h-5 w-5" />} label="Sprints" value={String(data.summary.sprints || 0)} unit="" />
+          </div>
+        </div>
 
-        <Card className="border-border bg-card">
-          <CardHeader><CardTitle className="text-lg">Jump Height</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              {data.jumpHeight.length > 0 ? (
-                <BarChart data={data.jumpHeight}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="time" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-                  <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} unit=" cm" />
-                  <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-                  <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Height" />
-                </BarChart>
-              ) : (
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No jump data available.</div>
-              )}
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="border-border bg-card">
+            <CardHeader><CardTitle className="text-lg">Speed Over Time</CardTitle></CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={260}>
+                {data.speed.length > 0 ? (
+                  <LineChart data={data.speed}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="time" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                    <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} unit=" m/s" />
+                    <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
+                    <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3, fill: "hsl(var(--primary))" }} name="Speed" />
+                  </LineChart>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No speed data available.</div>
+                )}
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
 
-        {/* Radar with comparison */}
-        <Card className="border-border bg-card lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center justify-between flex-wrap gap-3">
-              <span>Movement Pattern Analysis</span>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <Label htmlFor="compare-toggle" className="text-sm font-normal text-muted-foreground">Compare</Label>
-                  <Switch id="compare-toggle" checked={compareMode} onCheckedChange={setCompareMode} />
+          <Card className="border-border bg-card">
+            <CardHeader><CardTitle className="text-lg">Jump Height</CardTitle></CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={260}>
+                {data.jumpHeight.length > 0 ? (
+                  <BarChart data={data.jumpHeight}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="time" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                    <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} unit=" cm" />
+                    <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
+                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Height" />
+                  </BarChart>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No jump data available.</div>
+                )}
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Radar with comparison */}
+          <Card className="border-border bg-card lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center justify-between flex-wrap gap-3">
+                <span>Movement Pattern Analysis</span>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <Label htmlFor="compare-toggle" className="text-sm font-normal text-muted-foreground">Compare</Label>
+                    <Switch id="compare-toggle" checked={compareMode} onCheckedChange={setCompareMode} />
+                  </div>
+                  {compareMode && (
+                    <Select value={String(comparePlayerId)} onValueChange={setComparePlayerId}>
+                      <SelectTrigger className="w-[180px] h-8"><SelectValue placeholder="Select player" /></SelectTrigger>
+                      <SelectContent>
+                        {otherPlayers.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.user?.username || p.name || `Player ${p.id}`}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
-                {compareMode && (
-                  <Select value={String(comparePlayerId)} onValueChange={setComparePlayerId}>
-                    <SelectTrigger className="w-[180px] h-8"><SelectValue placeholder="Select player" /></SelectTrigger>
-                    <SelectContent>
-                      {otherPlayers.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.user?.username || p.name || `Player ${p.id}`}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex justify-center">
-            <ResponsiveContainer width="100%" height={380}>
-              <RadarChart data={radarData}>
-                <PolarGrid stroke="hsl(var(--border))" />
-                <PolarAngleAxis dataKey="metric" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
-                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-                <Radar name={playerName} dataKey={playerName} stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.25} strokeWidth={2} />
-                {compareMode && comparePlayer && compareData && (
-                  <Radar name={comparePlayer?.user?.username || comparePlayer?.name || `Player ${comparePlayer.id}`} dataKey={comparePlayer?.user?.username || comparePlayer?.name || `Player ${comparePlayer.id}`} stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.15} strokeWidth={2} />
-                )}
-                <Legend />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-              </RadarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex justify-center">
+              <ResponsiveContainer width="100%" height={380}>
+                <RadarChart data={radarData}>
+                  <PolarGrid stroke="hsl(var(--border))" />
+                  <PolarAngleAxis dataKey="metric" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
+                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                  <Radar name={playerName} dataKey={playerName} stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.25} strokeWidth={2} />
+                  {compareMode && comparePlayer && compareData && (
+                    <Radar name={comparePlayer?.user?.username || comparePlayer?.name || `Player ${comparePlayer.id}`} dataKey={comparePlayer?.user?.username || comparePlayer?.name || `Player ${comparePlayer.id}`} stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.15} strokeWidth={2} />
+                  )}
+                  <Legend />
+                  <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
+                </RadarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
@@ -741,7 +903,7 @@ const CreateTrainingDialog: React.FC<{ open: boolean; onClose: () => void; onCre
       const formData = new FormData();
       formData.append("title", title);
       formData.append("date", date);
-      formData.append("playerId", playerId);
+      formData.append("playerId", String(playerId));
       if (sessionId) formData.append("sessionId", sessionId);
       formData.append("notes", notes);
       formData.append("video", videoFile);
@@ -915,26 +1077,195 @@ const CreateTrainingDialog: React.FC<{ open: boolean; onClose: () => void; onCre
   );
 };
 
-/* ───────── ANALYSIS LIST CARDS ───────── */
+/* ───────── ANALYSIS TABLE (search / sort / filter / pagination) ───────── */
 
-const AnalysisCard: React.FC<{ title: string; subtitle: string; date: string; badge: string; onView: () => void; onDelete: () => void }> = ({ title, subtitle, date, badge, onView, onDelete }) => (
-  <Card className="border-border bg-card hover:border-primary/40 transition-colors">
-    <CardContent className="flex items-center justify-between p-4">
-      <div className="space-y-1 min-w-0">
-        <h3 className="font-semibold text-foreground truncate">{title}</h3>
-        <p className="text-sm text-muted-foreground truncate">{subtitle}</p>
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="text-xs">{badge}</Badge>
-          <span className="text-xs text-muted-foreground">{date}</span>
+interface TableColumn<T> {
+  key: string;
+  label: string;
+  render: (row: T) => React.ReactNode;
+}
+
+const PAGE_SIZE = 8;
+
+function AnalysisTable<T extends { id: string | number }>({
+  rows,
+  columns,
+  searchPlaceholder,
+  searchKeys,
+  sortOptions,
+  filterOptions,
+  onView,
+  onDelete,
+  emptyState,
+}: {
+  rows: T[];
+  columns: TableColumn<T>[];
+  searchPlaceholder: string;
+  searchKeys: ((r: T) => string)[];
+  sortOptions: { value: string; label: string; sortValue: (r: T) => string | number }[];
+  filterOptions?: { value: string; label: string; predicate: (r: T) => boolean }[];
+  onView: (row: T) => void;
+  onDelete: (row: T) => void;
+  emptyState: React.ReactNode;
+}) {
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<string>(sortOptions[0]?.value ?? "");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [filterKey, setFilterKey] = useState<string>("all");
+  const [page, setPage] = useState(1);
+
+  const filtered = React.useMemo(() => {
+    let out = rows;
+    if (filterKey !== "all" && filterOptions) {
+      const f = filterOptions.find(o => o.value === filterKey);
+      if (f) out = out.filter(f.predicate);
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      out = out.filter(r => searchKeys.some(k => k(r).toLowerCase().includes(q)));
+    }
+    const sorter = sortOptions.find(o => o.value === sortKey);
+    if (sorter) {
+      out = [...out].sort((a, b) => {
+        const av = sorter.sortValue(a);
+        const bv = sorter.sortValue(b);
+        if (av < bv) return sortDir === "asc" ? -1 : 1;
+        if (av > bv) return sortDir === "asc" ? 1 : -1;
+        return 0;
+      });
+    }
+    return out;
+  }, [rows, search, sortKey, sortDir, filterKey, searchKeys, sortOptions, filterOptions]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  React.useEffect(() => { setPage(1); }, [search, sortKey, sortDir, filterKey]);
+
+  const visiblePages = React.useMemo(() => {
+    const arr: (number | "ellipsis")[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) arr.push(i);
+    } else {
+      arr.push(1);
+      if (safePage > 3) arr.push("ellipsis");
+      for (let i = Math.max(2, safePage - 1); i <= Math.min(totalPages - 1, safePage + 1); i++) arr.push(i);
+      if (safePage < totalPages - 2) arr.push("ellipsis");
+      arr.push(totalPages);
+    }
+    return arr;
+  }, [totalPages, safePage]);
+
+  return (
+    <div className="space-y-3">
+      {/* Toolbar (top-right) */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="h-9 w-[220px] pl-8"
+          />
         </div>
+        {filterOptions && filterOptions.length > 0 && (
+          <Select value={filterKey} onValueChange={setFilterKey}>
+            <SelectTrigger className="h-9 w-[150px]"><SelectValue placeholder="Filter" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              {filterOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={sortKey} onValueChange={setSortKey}>
+          <SelectTrigger className="h-9 w-[180px]"><SelectValue placeholder="Sort by" /></SelectTrigger>
+          <SelectContent>
+            {sortOptions.map(o => <SelectItem key={o.value} value={o.value}>Sort: {o.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 gap-1"
+          onClick={() => setSortDir(d => (d === "asc" ? "desc" : "asc"))}
+          title={`Sort ${sortDir === "asc" ? "descending" : "ascending"}`}
+        >
+          <ArrowUpDown className="h-4 w-4" />
+          {sortDir === "asc" ? "Asc" : "Desc"}
+        </Button>
       </div>
-      <div className="flex items-center gap-2 ml-4 shrink-0">
-        <Button variant="ghost" size="icon" onClick={onView}><Eye className="h-4 w-4" /></Button>
-        <Button variant="ghost" size="icon" onClick={onDelete}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-      </div>
-    </CardContent>
-  </Card>
-);
+
+      {filtered.length === 0 ? (
+        <>{emptyState}</>
+      ) : (
+        <>
+          <Card className="border-border bg-card overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {columns.map(c => <TableHead key={c.key}>{c.label}</TableHead>)}
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paged.map(row => (
+                  <TableRow key={row.id} className="hover:bg-muted/30">
+                    {columns.map(c => <TableCell key={c.key}>{c.render(row)}</TableCell>)}
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => onView(row)}><Eye className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => onDelete(row)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
+            </span>
+            {totalPages > 1 && (
+              <Pagination className="mx-0 w-auto justify-end">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#"
+                      onClick={(e) => { e.preventDefault(); setPage(p => Math.max(1, p - 1)); }}
+                      className={safePage === 1 ? "pointer-events-none opacity-50" : ""}
+                    />
+                  </PaginationItem>
+                  {visiblePages.map((p, i) =>
+                    p === "ellipsis" ? (
+                      <PaginationItem key={`e-${i}`}><PaginationEllipsis /></PaginationItem>
+                    ) : (
+                      <PaginationItem key={p}>
+                        <PaginationLink href="#" isActive={p === safePage} onClick={(e) => { e.preventDefault(); setPage(p as number); }}>
+                          {p}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ),
+                  )}
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#"
+                      onClick={(e) => { e.preventDefault(); setPage(p => Math.min(totalPages, p + 1)); }}
+                      className={safePage === totalPages ? "pointer-events-none opacity-50" : ""}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 /* ───────── MATCH TAB ───────── */
 
@@ -981,29 +1312,56 @@ const MatchAnalysisTab: React.FC<{ matches: any[]; sessions: any[] }> = ({ match
     }
   });
 
-  if (viewing) return <MatchDetailView analysis={viewing} onBack={() => setViewing(null)} />;
+  if (viewing) return <MatchDetailView analysis={viewing} allAnalyses={analyses} onBack={() => setViewing(null)} onNavigate={setViewing} />;
+
+  const emptyState = (
+    <Card className="border-dashed border-border bg-card">
+      <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+        <Target className="h-12 w-12 text-muted-foreground mb-3" />
+        <h3 className="text-lg font-semibold text-foreground mb-1">No match analyses found</h3>
+        <p className="text-sm text-muted-foreground mb-4">Adjust your search or create a new analysis to start tracking match performance.</p>
+        <Button onClick={() => setDialogOpen(true)}><Plus className="h-4 w-4 mr-1" /> Create Analysis</Button>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">{analyses.length} match {analyses.length === 1 ? "analysis" : "analyses"}</p>
         <Button onClick={() => setDialogOpen(true)}><Plus className="h-4 w-4 mr-1" /> Create Analysis</Button>
       </div>
-      {(analyses.length === 0 && !isLoading) && (
-        <Card className="border-dashed border-border bg-card">
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <Target className="h-12 w-12 text-muted-foreground mb-3" />
-            <h3 className="text-lg font-semibold text-foreground mb-1">No match analyses yet</h3>
-            <p className="text-sm text-muted-foreground mb-4">Create your first analysis to start tracking match performance.</p>
-            <Button onClick={() => setDialogOpen(true)}><Plus className="h-4 w-4 mr-1" /> Create Analysis</Button>
-          </CardContent>
-        </Card>
-      )}
-      <div className="space-y-3">
-        {analyses.map(a => (
-          <AnalysisCard key={a.id} title={a.title} subtitle={`${a.homeTeam} vs ${a.awayTeam}`} date={new Date(a.date).toLocaleDateString()} badge={a.inputMode === "video" ? "Video" : "Manual"} onView={() => setViewing(a)} onDelete={() => deleteMutation.mutate(a.id)} />
-        ))}
-      </div>
+      <AnalysisTable<MatchAnalysis>
+        rows={analyses}
+        searchPlaceholder="Search match, team..."
+        searchKeys={[
+          (a) => a.title,
+          (a) => a.homeTeam,
+          (a) => a.awayTeam,
+        ]}
+        sortOptions={[
+          { value: "date", label: "Date", sortValue: (a) => new Date(a.date).getTime() },
+          { value: "name", label: "Name", sortValue: (a) => a.title.toLowerCase() },
+          { value: "home", label: "Home Team", sortValue: (a) => a.homeTeam.toLowerCase() },
+          { value: "away", label: "Away Team", sortValue: (a) => a.awayTeam.toLowerCase() },
+          { value: "events", label: "Events", sortValue: (a) => a.matchEvents.length },
+          { value: "possession", label: "Home Possession", sortValue: (a) => a.matchStats.home.possession },
+        ]}
+        filterOptions={[
+          { value: "manual", label: "Manual", predicate: (a) => a.inputMode === "manual" },
+          { value: "video", label: "Video", predicate: (a) => a.inputMode === "video" },
+        ]}
+        columns={[
+          { key: "title", label: "Title", render: (a) => <span className="font-medium text-foreground">{a.title}</span> },
+          { key: "teams", label: "Teams", render: (a) => <span className="text-muted-foreground">{a.homeTeam} <span className="text-xs">vs</span> {a.awayTeam}</span> },
+          { key: "date", label: "Date", render: (a) => <span className="text-sm">{new Date(a.date).toLocaleDateString()}</span> },
+          { key: "events", label: "Events", render: (a) => <span className="text-sm tabular-nums">{a.matchEvents.length}</span> },
+          { key: "mode", label: "Mode", render: (a) => <Badge variant="secondary" className="text-xs">{a.inputMode === "video" ? "Video" : "Manual"}</Badge> },
+        ]}
+        onView={(a) => setViewing(a)}
+        onDelete={(a) => deleteMutation.mutate(a.id)}
+        emptyState={emptyState}
+      />
       <CreateMatchDialog open={dialogOpen} onClose={() => setDialogOpen(false)} onCreate={a => createMutation.mutate(a)} matches={matches} sessions={sessions} />
     </div>
   );
@@ -1062,33 +1420,72 @@ const TrainingAnalysisTab: React.FC<{ players: any[] }> = ({ players }) => {
     }
   });
 
-  if (viewing) return <TrainingDetailView analysis={viewing} allAnalyses={analyses} onBack={() => setViewing(null)} players={players} />;
+  if (viewing) return <TrainingDetailView analysis={viewing} allAnalyses={analyses} onBack={() => setViewing(null)} players={players} onNavigate={setViewing} />;
+
+  const playerOf = (a: TrainingAnalysis) => players.find(pl => pl.id === a.playerId);
+  const pName = (a: TrainingAnalysis) => {
+    const p = playerOf(a);
+    return p ? (p.user?.username || p.name || `Player ${p.id}`) : "Unknown";
+  };
+  const overallOf = (a: TrainingAnalysis) => {
+    const p = playerOf(a);
+    return deriveMetrics(a.analysisData.movement, a.analysisData.summary, p?.position || "").overall;
+  };
+
+  const emptyState = (
+    <Card className="border-dashed border-border bg-card">
+      <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+        <Activity className="h-12 w-12 text-muted-foreground mb-3" />
+        <h3 className="text-lg font-semibold text-foreground mb-1">No training analyses found</h3>
+        <p className="text-sm text-muted-foreground mb-4">Adjust your search or create a new analysis to track individual player performance.</p>
+        <Button onClick={() => setDialogOpen(true)}><Plus className="h-4 w-4 mr-1" /> Create Analysis</Button>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">{analyses.length} training {analyses.length === 1 ? "analysis" : "analyses"}</p>
         <Button onClick={() => setDialogOpen(true)}><Plus className="h-4 w-4 mr-1" /> Create Analysis</Button>
       </div>
-      {(analyses.length === 0 && !isLoading) && (
-        <Card className="border-dashed border-border bg-card">
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <Activity className="h-12 w-12 text-muted-foreground mb-3" />
-            <h3 className="text-lg font-semibold text-foreground mb-1">No training analyses yet</h3>
-            <p className="text-sm text-muted-foreground mb-4">Create your first analysis to track individual player performance.</p>
-            <Button onClick={() => setDialogOpen(true)}><Plus className="h-4 w-4 mr-1" /> Create Analysis</Button>
-          </CardContent>
-        </Card>
-      )}
-      <div className="space-y-3">
-        {analyses.map(a => {
-          const p = players.find(pl => pl.id === a.playerId);
-          const pName = p ? (p.user?.username || p.name || `Player ${p.id}`) : "Unknown";
-          return (
-            <AnalysisCard key={a.id} title={a.title} subtitle={p ? `${pName} · ${p.position}` : "Unknown"} date={new Date(a.date).toLocaleDateString()} badge={a.inputMode === "video" ? "Video" : "Manual"} onView={() => setViewing(a)} onDelete={() => deleteMutation.mutate(a.id)} />
-          );
-        })}
-      </div>
+      <AnalysisTable<TrainingAnalysis>
+        rows={analyses}
+        searchPlaceholder="Search title, player..."
+        searchKeys={[
+          (a) => a.title,
+          (a) => pName(a),
+          (a) => playerOf(a)?.position || "",
+        ]}
+        sortOptions={[
+          { value: "date", label: "Date", sortValue: (a) => new Date(a.date).getTime() },
+          { value: "name", label: "Name", sortValue: (a) => a.title.toLowerCase() },
+          { value: "player", label: "Player", sortValue: (a) => pName(a).toLowerCase() },
+          { value: "overall", label: "Overall", sortValue: overallOf },
+          { value: "topSpeed", label: "Top Speed", sortValue: (a) => a.analysisData.summary.topSpeed ?? 0 },
+          { value: "maxJump", label: "Max Jump", sortValue: (a) => a.analysisData.summary.maxJump ?? 0 },
+        ]}
+        filterOptions={[
+          { value: "manual", label: "Manual", predicate: (a) => a.inputMode === "manual" },
+          { value: "video", label: "Video", predicate: (a) => a.inputMode === "video" },
+          { value: "forward", label: "Forwards", predicate: (a) => /for|strik|wing/i.test(playerOf(a)?.position || "") },
+          { value: "midfield", label: "Midfielders", predicate: (a) => /mid/i.test(playerOf(a)?.position || "") },
+          { value: "defender", label: "Defenders", predicate: (a) => /def/i.test(playerOf(a)?.position || "") },
+          { value: "goalkeeper", label: "Goalkeepers", predicate: (a) => /goal/i.test(playerOf(a)?.position || "") },
+        ]}
+        columns={[
+          { key: "title", label: "Title", render: (a) => <span className="font-medium text-foreground">{a.title}</span> },
+          { key: "player", label: "Player", render: (a) => <span className="text-muted-foreground">{pName(a)}</span> },
+          { key: "position", label: "Position", render: (a) => <span className="text-sm text-muted-foreground">{playerOf(a)?.position || "—"}</span> },
+          { key: "date", label: "Date", render: (a) => <span className="text-sm">{new Date(a.date).toLocaleDateString()}</span> },
+          { key: "overall", label: "Overall", render: (a) => <span className="font-bold text-primary tabular-nums">{overallOf(a)}</span> },
+          { key: "topSpeed", label: "Top Speed", render: (a) => <span className="text-sm tabular-nums">{(a.analysisData.summary.topSpeed ?? 0).toFixed(1)} m/s</span> },
+          { key: "mode", label: "Mode", render: (a) => <Badge variant="secondary" className="text-xs">{a.inputMode === "video" ? "Video" : "Manual"}</Badge> },
+        ]}
+        onView={(a) => setViewing(a)}
+        onDelete={(a) => deleteMutation.mutate(a.id)}
+        emptyState={emptyState}
+      />
       <CreateTrainingDialog open={dialogOpen} onClose={() => setDialogOpen(false)} onCreate={a => createMutation.mutate(a)} players={players} isAnalyzing={createMutation.isPending} />
     </div>
   );

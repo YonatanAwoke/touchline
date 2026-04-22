@@ -614,7 +614,7 @@ const TacticalBoard: React.FC = () => {
                 <div className="flex items-center gap-0.5 rounded-lg bg-secondary p-1 flex-wrap">
                   {TOOLS.map((tool) => (
                     <Button key={tool.type} variant={activeTool === tool.type ? "default" : "ghost"} size="sm" className="h-8 gap-1 text-xs px-2"
-                      onClick={() => { setActiveTool(tool.type); setSelectedAnnotation(null); }}>
+                      onClick={() => { setActiveTool(tool.type); setSelectedIds([]); }}>
                       {tool.icon}
                       <span className="hidden md:inline">{tool.label}</span>
                     </Button>
