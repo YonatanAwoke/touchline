@@ -1,10 +1,16 @@
-import React from "react";
+import React, { useState } from "react";
 import useAuth from "@/lib/auth";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Users, Settings, ArrowUpRight, Trophy } from "lucide-react";
+import { Users, Settings, ArrowUpRight, Trophy, Calendar as CalendarIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { format, startOfMonth, endOfMonth } from "date-fns";
+import { cn } from "@/lib/utils";
+import { DateRange } from "react-day-picker";
 
 const resultColor: Record<string, string> = {
   Win: "text-primary",
@@ -17,15 +23,22 @@ const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const displayUser = user || { username: "Demo User" };
 
-  const today = new Date().toLocaleDateString("en-US", {
-    year: "numeric", month: "long", day: "numeric",
+  const today = format(new Date(), "PP");
+
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: startOfMonth(new Date()),
+    to: endOfMonth(new Date()),
   });
 
-  // Fetch Dashboard Stats
+  // Fetch Dashboard Stats with progress range
   const { data: stats } = useQuery({
-    queryKey: ["dashboard-stats"],
+    queryKey: ["dashboard-stats", dateRange?.from, dateRange?.to],
     queryFn: async () => {
-      const res = await fetch("/api/stats", { credentials: "include" });
+      let url = "/api/stats";
+      if (dateRange?.from && dateRange?.to) {
+        url += `?from=${dateRange.from.toISOString()}&to=${dateRange.to.toISOString()}`;
+      }
+      const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load stats");
       return res.json();
     }
@@ -57,6 +70,14 @@ const Dashboard: React.FC = () => {
     { title: "Total Coaches", subtitle: "Assigned coaches", value: stats?.coaches ?? 0 },
   ];
 
+  const totalSessions = stats?.progress?.totalSessions || 0;
+  const completedSessions = stats?.progress?.completedSessions || 0;
+  const sessionProgress = totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0;
+
+  const totalMatches = stats?.progress?.totalMatches || 0;
+  const completedMatches = stats?.progress?.completedMatches || 0;
+  const matchProgress = totalMatches > 0 ? (completedMatches / totalMatches) * 100 : 0;
+
   return (
     <DashboardLayout title={`Welcome, ${displayUser.username || "User"}`} subtitle={today}>
       {/* Stat Cards */}
@@ -82,9 +103,49 @@ const Dashboard: React.FC = () => {
       {/* Schedule + Last Games */}
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <h2 className="text-xl font-bold text-foreground">
-            Current Progress <span className="text-sm font-normal text-muted-foreground">(Monthly Activity)</span>
-          </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-foreground">
+              Current Progress
+            </h2>
+            <div className="mt-2 sm:mt-0 flex items-center">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="date"
+                    variant={"outline"}
+                    className={cn(
+                      "w-[260px] justify-start text-left font-normal",
+                      !dateRange && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateRange?.from ? (
+                      dateRange.to ? (
+                        <>
+                          {format(dateRange.from, "LLL dd, y")} -{" "}
+                          {format(dateRange.to, "LLL dd, y")}
+                        </>
+                      ) : (
+                        format(dateRange.from, "LLL dd, y")
+                      )
+                    ) : (
+                      <span>Pick a date range</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar
+                    initialFocus
+                    mode="range"
+                    defaultMonth={dateRange?.from}
+                    selected={dateRange}
+                    onSelect={setDateRange}
+                    numberOfMonths={2}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <Card className="border-border">
               <CardContent className="p-5">
@@ -93,9 +154,9 @@ const Dashboard: React.FC = () => {
                 </div>
                 <h3 className="text-base font-semibold text-foreground">Training Progress</h3>
                 <div className="mt-4">
-                  <Progress value={20} className="h-2" />
+                  <Progress value={sessionProgress} className="h-2" />
                   <p className="mt-2 text-sm text-muted-foreground">
-                    <span className="font-semibold text-foreground">4</span>/20 Planned Sessions
+                    <span className="font-semibold text-foreground">{completedSessions}</span>/{totalSessions} Planned Sessions
                   </p>
                 </div>
               </CardContent>
@@ -107,9 +168,9 @@ const Dashboard: React.FC = () => {
                 </div>
                 <h3 className="text-base font-semibold text-foreground">Match Performance</h3>
                 <div className="mt-4">
-                  <Progress value={40} className="h-2" />
+                  <Progress value={matchProgress} className="h-2" />
                   <p className="mt-2 text-sm text-muted-foreground">
-                    <span className="font-semibold text-foreground">4</span>/10 Completed Matches
+                    <span className="font-semibold text-foreground">{completedMatches}</span>/{totalMatches} Completed Matches
                   </p>
                 </div>
               </CardContent>
@@ -118,9 +179,9 @@ const Dashboard: React.FC = () => {
         </div>
 
         <div>
-          <h2 className="text-xl font-bold text-foreground">Recent Performance</h2>
-          <Card className="mt-4 border-border">
-            <CardContent className="flex flex-col gap-4 p-5">
+           <h2 className="text-xl font-bold text-foreground">Recent Performance</h2>
+          <Card className="mt-4 border-border h-[calc(100%-3rem)] min-h-[300px]">
+             <CardContent className="flex flex-col gap-4 p-5 h-full">
               {lastGames.length > 0 ? (
                 lastGames.map((game: any) => {
                   const result = getMatchResult(game);
