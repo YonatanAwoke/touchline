@@ -58,6 +58,8 @@ export async function GET(
                 id: true,
                 email: true,
                 username: true,
+                firstName: true,
+                lastName: true,
                 role: true,
                 createdAt: true,
                 coachProfile: true,
@@ -142,7 +144,7 @@ export async function PATCH(
         } catch (e) {
             return NextResponse.json({ error: "Invalid JSON input" }, { status: 400 });
         }
-        const { email, username, role: newRole } = body;
+        const { email, username, firstName, lastName, role: newRole } = body;
 
         // 1. Fetch target user to check organization
         const targetUser = await prisma.user.findUnique({
@@ -164,8 +166,10 @@ export async function PATCH(
 
         // 3. Restricted Updates
         const data: any = {};
-        if (email) data.email = email;
-        if (username) data.username = username;
+        if (email !== undefined) data.email = email;
+        if (username !== undefined) data.username = username;
+        if (firstName !== undefined) data.firstName = firstName;
+        if (lastName !== undefined) data.lastName = lastName;
 
         // Only Admins can change roles
         if (newRole && (isSuperAdmin || isClubAdmin)) {
@@ -183,7 +187,7 @@ export async function PATCH(
         const updatedUser = await prisma.user.update({
             where: { id: targetUserId },
             data,
-            select: { id: true, email: true, username: true, role: true }
+            select: { id: true, email: true, username: true, firstName: true, lastName: true, role: true }
         });
 
         return NextResponse.json(updatedUser);

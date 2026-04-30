@@ -2,7 +2,21 @@ import React from "react";
 import footballSvg from "@/assets/football.svg";
 
 interface Movement { metric: string; value: number }
-interface Summary { topSpeed?: number; avgSpeed?: number; maxJump?: number; avgJump?: number; distance?: number; sprints?: number }
+interface Summary {
+  topSpeed?: number;
+  avgSpeed?: number;
+  maxJump?: number;
+  avgJump?: number;
+  distance?: number;
+  sprints?: number;
+  reactionTime?: number;
+  cdReaccelTime?: number;
+  cdAngle?: number;
+  kneeAngle?: number;
+  hipAngle?: number;
+  armSwingAngle?: number;
+  formScore?: number;
+}
 
 interface Props {
   playerName: string;
@@ -14,12 +28,11 @@ interface Props {
 
 /**
  * Derive 6 FIFA-style metrics (PAC, SHO, PAS, DRI, DEF, PHY) from
- * movement + summary data. Falls back to dummy baseline so the card
- * always looks complete even with sparse data.
+ * movement + summary + advanced biomechanical data.
  */
 function deriveMetrics(movement: Movement[], summary: Summary, position: string) {
   const m = (k: string, fallback: number) =>
-    Math.round(movement.find(x => x.metric.toLowerCase() === k.toLowerCase())?.value ?? fallback);
+    Math.round((movement || []).find(x => x.metric.toLowerCase() === k.toLowerCase())?.value ?? fallback);
 
   const acc = m("Acceleration", 70);
   const agi = m("Agility", 72);
@@ -28,18 +41,34 @@ function deriveMetrics(movement: Movement[], summary: Summary, position: string)
   const rea = m("Reaction", 74);
   const coo = m("Coordination", 71);
 
-  // Speed-influenced metrics
-  const topSpeed = summary.topSpeed ?? 7;
-  const speedScore = Math.min(99, Math.round((topSpeed / 10) * 100));
+  const safeSummary = summary || {};
 
-  const PAC = Math.round((acc * 0.55 + speedScore * 0.45));
-  const SHO = Math.round((coo * 0.5 + rea * 0.3 + (summary.maxJump ?? 50) * 0.2));
-  const PAS = Math.round((coo * 0.45 + rea * 0.25 + bal * 0.3));
-  const DRI = Math.round((agi * 0.5 + bal * 0.3 + coo * 0.2));
-  const DEF = Math.round((bal * 0.4 + rea * 0.35 + end * 0.25));
-  const PHY = Math.round((end * 0.5 + ((summary.maxJump ?? 50) / 80) * 100 * 0.3 + bal * 0.2));
+  // 1. PAC (Pace): Top Speed + Acceleration + Reaction Time
+  const speedScore = Math.min(99, Math.round(((safeSummary.topSpeed ?? 7) / 10) * 100));
+  const reactionBonus = safeSummary.reactionTime ? Math.max(0, (0.5 - safeSummary.reactionTime) * 40) : 0;
+  const PAC = (acc * 0.4 + speedScore * 0.5 + reactionBonus);
 
-  const clamp = (v: number) => Math.max(40, Math.min(99, v));
+  // 2. SHO (Shooting/Power): Power (Jump) + Coordination + Knee Extension
+  const jumpScore = ((safeSummary.maxJump ?? 50) / 80) * 100;
+  const kneeBonus = safeSummary.kneeAngle ? (safeSummary.kneeAngle / 180) * 20 : 10;
+  const SHO = (coo * 0.5 + jumpScore * 0.3 + kneeBonus);
+
+  // 3. PAS (Passing): Coordination + Balance + Torso Stability
+  const formBonus = (safeSummary.formScore ?? 70) * 0.2;
+  const PAS = (coo * 0.5 + bal * 0.3 + formBonus);
+
+  // 4. DRI (Dribbling): Agility + Balance + Change of Direction Angle
+  const cdBonus = safeSummary.cdAngle ? (safeSummary.cdAngle / 180) * 20 : 10; 
+  const DRI = (agi * 0.5 + bal * 0.3 + cdBonus);
+
+  // 5. DEF (Defense): Reaction + Balance + Center of Gravity (Hip Angle)
+  const hipBonus = safeSummary.hipAngle ? (1 - safeSummary.hipAngle / 180) * 20 : 10; // lower center of gravity is better for defense
+  const DEF = (rea * 0.5 + bal * 0.3 + hipBonus);
+
+  // 6. PHY (Physical): Endurance + Strength (Jump) + Form Score
+  const PHY = (end * 0.5 + jumpScore * 0.3 + (safeSummary.formScore ?? 70) * 0.2);
+
+  const clamp = (v: number) => Math.max(40, Math.min(99, Math.round(v)));
   const stats = {
     PAC: clamp(PAC),
     SHO: clamp(SHO),

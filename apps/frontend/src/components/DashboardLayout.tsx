@@ -42,7 +42,6 @@ const sidebarItems = [
   { icon: Video, label: "Analysis", path: "/dashboard/analysis" },
   { icon: ClipboardCheck, label: "Examination", path: "/dashboard/examination" },
   { icon: CalendarDays, label: "Schedule", path: "/dashboard/schedule" },
-  { icon: Clock, label: "History", path: "/dashboard/history" },
   { icon: Settings, label: "Settings", path: "/dashboard/settings" },
 ];
 
@@ -53,25 +52,27 @@ interface DashboardLayoutProps {
 }
 
 const SidebarBrand: React.FC = () => {
-  const { state } = useSidebar();
-  const expanded = state === "expanded";
+  const { state, isMobile } = useSidebar();
+  // On mobile the sidebar is always rendered "expanded" inside a sheet,
+  // so we should always show the full wordmark there.
+  const expanded = isMobile || state === "expanded";
   return (
-    <div className="relative flex h-8 items-center justify-center overflow-hidden">
-      {/* Collapsed: standalone T */}
+    <div className="relative flex h-9 w-full items-center justify-center overflow-hidden">
+      {/* Standalone T (collapsed state) */}
       <span
-        className={`absolute text-2xl font-black italic text-primary transition-all duration-300 ${
-          expanded ? "-translate-x-3 opacity-0" : "translate-x-0 opacity-100"
-        }`}
         aria-hidden={expanded}
+        className={`pointer-events-none absolute inset-0 flex items-center justify-center text-2xl font-black italic leading-none text-primary transition-all duration-300 ease-out ${
+          expanded ? "scale-75 opacity-0" : "scale-100 opacity-100"
+        }`}
       >
         T
       </span>
-      {/* Expanded: full TOUCHLINE wordmark */}
+      {/* Full TOUCHLINE wordmark (expanded state) */}
       <span
-        className={`absolute flex items-baseline text-xl font-black italic tracking-tight text-primary transition-all duration-300 ${
-          expanded ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"
-        }`}
         aria-hidden={!expanded}
+        className={`pointer-events-none absolute inset-0 flex items-center justify-center whitespace-nowrap text-xl font-black italic leading-none tracking-tight transition-all duration-300 ease-out ${
+          expanded ? "scale-100 opacity-100" : "scale-90 opacity-0"
+        }`}
       >
         <span className="text-primary">T</span>
         <span className="text-foreground">OUCHLINE</span>

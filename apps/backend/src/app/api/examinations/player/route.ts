@@ -106,8 +106,8 @@ export async function POST(request: Request) {
 
         return NextResponse.json(analysis, { status: 201 });
     } catch (error: any) {
-        console.error("Create player analysis error:", error);
-        return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
+        console.error("Create player analysis error details:", error?.message, "Meta:", error?.meta, "Code:", error?.code);
+        return NextResponse.json({ error: error.message || "Internal server error", details: error?.meta }, { status: 500 });
     }
 }
 

@@ -14,6 +14,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import {
   Flame, CornerDownRight, ShieldAlert, Target, Zap, ArrowUp, Activity, User, Timer, TrendingUp, Plus, Upload, Edit3, Trash2, Eye, ArrowLeft, Users, X, Loader2, FileVideo,
   ChevronLeft, ChevronRight, Download, FileImage, FileText, Share2, Search, ArrowUpDown,
+  Repeat, PersonStanding, Gauge, CheckSquare, Square as SquareIcon,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend,
@@ -52,8 +53,37 @@ interface TrainingAnalysis {
   videoFile?: string;
   notes: string;
   inputMode: "manual" | "video";
+  /** Which metric groups were selected for this examination. Undefined = all (legacy). */
+  selectedMetrics?: string[];
+  insights?: string[];
   analysisData: typeof defaultPlayerData;
 }
+
+/* ───────── METRIC CATALOG ─────────
+ * Each entry represents a group the user can opt-in to when creating
+ * a player examination. Detail-view cards render conditionally based
+ * on what was selected (or what data exists for legacy analyses).
+ */
+const METRIC_CATALOG = [
+  { id: "speed",         label: "Speed Tracking",            description: "Top speed, average speed over time" },
+  { id: "jump",          label: "Jump Height",               description: "Vertical leap measurements" },
+  { id: "movement",      label: "Movement Pattern",          description: "Agility, balance, coordination radar" },
+  { id: "agility",       label: "Agility / Change of Direction", description: "Direction-change angle & re-acceleration time" },
+  { id: "form",          label: "Body Mechanics / Form",     description: "Knee, hip & arm-swing joint angles" },
+  { id: "reaction",      label: "Reaction Time",             description: "First-movement detection after stimulus" },
+  { id: "distance",      label: "Distance & Sprints",        description: "Total distance covered, sprint count" },
+] as const;
+
+type MetricId = typeof METRIC_CATALOG[number]["id"];
+
+const ALL_METRIC_IDS: MetricId[] = METRIC_CATALOG.map(m => m.id) as MetricId[];
+
+/** Backward-compatibility helper: if no selectedMetrics is stored, infer from data. */
+const resolveSelectedMetrics = (a: TrainingAnalysis): MetricId[] => {
+  if (a.selectedMetrics && a.selectedMetrics.length > 0) return a.selectedMetrics as MetricId[];
+  // legacy analyses: assume all metric groups available
+  return ALL_METRIC_IDS;
+};
 
 /* ───────── DEFAULT / TEST DATA ───────── */
 
@@ -98,7 +128,35 @@ const defaultPlayerData = {
     { metric: "Endurance", value: 72, fullMark: 100 }, { metric: "Balance", value: 78, fullMark: 100 },
     { metric: "Reaction", value: 88, fullMark: 100 }, { metric: "Coordination", value: 82, fullMark: 100 },
   ],
-  summary: { topSpeed: 9.1, avgSpeed: 6.5, maxJump: 60, avgJump: 54.5, distance: 1240, sprints: 14 },
+  summary: {
+    topSpeed: 9.1, avgSpeed: 6.5, maxJump: 60, avgJump: 54.5, distance: 1240, sprints: 14,
+    // Agility / Change of Direction
+    cdAngle: 112,        // average change-of-direction angle (degrees)
+    cdReaccelTime: 0.42, // seconds to re-accelerate
+    // Body Mechanics / Form Analysis (joint angles in degrees)
+    kneeAngle: 142,
+    hipAngle: 118,
+    armSwingAngle: 95,
+    formScore: 84,       // overall mechanics score 0-100
+    // Reaction Time
+    reactionTime: 0.28,
+    reaccelTime: 0.42,
+    agilityScore: 85,
+  } as {
+    topSpeed: number; avgSpeed: number; maxJump: number; avgJump: number;
+    distance: number; sprints: number;
+    cdAngle?: number; cdReaccelTime?: number;
+    kneeAngle?: number; hipAngle?: number; armSwingAngle?: number; formScore?: number;
+    reactionTime?: number;
+    reaccelTime?: number;
+    agilityScore?: number;
+  },
+  insights: [] as string[],
+  biomechanics: {
+    kneeAngles: [] as { time: string; value: number }[],
+    hipAngles: [] as { time: string; value: number }[],
+    armAngles: [] as { time: string; value: number }[],
+  },
 };
 
 const generateHeatMapData = () => {
@@ -462,6 +520,11 @@ const TrainingDetailView: React.FC<{ analysis: TrainingAnalysis; allAnalyses: Tr
   const playerName = player?.user?.username || player?.name || `Player ${analysis.playerId}`;
   const teamName = player?.team?.name || player?.club?.name || "—";
   const data = analysis.analysisData;
+  const enabledMetrics = resolveSelectedMetrics(analysis);
+  const isOn = (m: MetricId) => enabledMetrics.includes(m);
+  const enabledLabels = enabledMetrics
+    .map(id => METRIC_CATALOG.find(m => m.id === id)?.label)
+    .filter(Boolean) as string[];
 
   const reportRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -551,6 +614,27 @@ const TrainingDetailView: React.FC<{ analysis: TrainingAnalysis; allAnalyses: Tr
           <Card className="border-border bg-card"><CardContent className="p-4 text-sm text-muted-foreground">{analysis.notes}</CardContent></Card>
         )}
 
+        {/* 🤖 AI Coach Insights */}
+        {((analysis.insights && analysis.insights.length > 0) || (data.insights && data.insights.length > 0)) && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary">
+                <Flame className="h-4 w-4" /> AI Coach Observations & Insights
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {(analysis.insights || data.insights || []).map((insight, i) => (
+                  <li key={i} className="text-sm text-foreground/90 flex items-start gap-2">
+                    <span className="text-primary mt-1">•</span>
+                    {insight}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Player rating card + summary metrics side by side */}
         <div className="grid gap-6 lg:grid-cols-[auto_1fr] items-start">
           <PlayerRatingCard
@@ -562,93 +646,190 @@ const TrainingDetailView: React.FC<{ analysis: TrainingAnalysis; allAnalyses: Tr
             summary={data.summary}
           />
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <MetricCard icon={<Zap className="h-5 w-5" />} label="Top Speed" value={data.summary.topSpeed?.toFixed(1) || "0.0"} unit="m/s" />
-            <MetricCard icon={<TrendingUp className="h-5 w-5" />} label="Avg Speed" value={data.summary.avgSpeed?.toFixed(1) || "0.0"} unit="m/s" />
-            <MetricCard icon={<ArrowUp className="h-5 w-5" />} label="Max Jump" value={String(data.summary.maxJump || 0)} unit="cm" />
-            <MetricCard icon={<ArrowUp className="h-5 w-5" />} label="Avg Jump" value={data.summary.avgJump?.toFixed(1) || "0.0"} unit="cm" />
-            <MetricCard icon={<Activity className="h-5 w-5" />} label="Distance" value={String(data.summary.distance || 0)} unit="m" />
-            <MetricCard icon={<Timer className="h-5 w-5" />} label="Sprints" value={String(data.summary.sprints || 0)} unit="" />
+            {isOn("speed") && <MetricCard icon={<Zap className="h-5 w-5" />} label="Top Speed" value={data.summary.topSpeed?.toFixed(1) || "0.0"} unit="m/s" />}
+            {isOn("speed") && <MetricCard icon={<TrendingUp className="h-5 w-5" />} label="Avg Speed" value={data.summary.avgSpeed?.toFixed(1) || "0.0"} unit="m/s" />}
+            {isOn("jump") && <MetricCard icon={<ArrowUp className="h-5 w-5" />} label="Max Jump" value={String(data.summary.maxJump || 0)} unit="cm" />}
+            {isOn("jump") && <MetricCard icon={<ArrowUp className="h-5 w-5" />} label="Avg Jump" value={data.summary.avgJump?.toFixed(1) || "0.0"} unit="cm" />}
+            {isOn("distance") && <MetricCard icon={<Activity className="h-5 w-5" />} label="Distance" value={String(data.summary.distance || 0)} unit="m" />}
+            {isOn("distance") && <MetricCard icon={<Timer className="h-5 w-5" />} label="Sprints" value={String(data.summary.sprints || 0)} unit="" />}
+
+            {/* 🔁 Agility / Change of Direction */}
+            {isOn("agility") && (
+              <MetricCard icon={<Repeat className="h-5 w-5" />} label="Direction Change" value={String(data.summary.cdAngle ?? 0)} unit="°" />
+            )}
+            {isOn("agility") && (
+              <MetricCard icon={<Gauge className="h-5 w-5" />} label="Re-accel Time" value={(data.summary.cdReaccelTime ?? 0).toFixed(2)} unit="s" />
+            )}
+
+            {/* 🧍 Body Mechanics / Form Analysis */}
+            {isOn("form") && (
+              <MetricCard icon={<PersonStanding className="h-5 w-5" />} label="Form Score" value={String(data.summary.formScore ?? 0)} unit="/100" />
+            )}
+            {isOn("form") && (
+              <MetricCard icon={<PersonStanding className="h-5 w-5" />} label="Knee Angle" value={String(data.summary.kneeAngle ?? 0)} unit="°" />
+            )}
+            {isOn("form") && (
+              <MetricCard icon={<PersonStanding className="h-5 w-5" />} label="Hip Angle" value={String(data.summary.hipAngle ?? 0)} unit="°" />
+            )}
+            {isOn("form") && (
+              <MetricCard icon={<PersonStanding className="h-5 w-5" />} label="Arm Swing" value={String(data.summary.armSwingAngle ?? 0)} unit="°" />
+            )}
+
+            {/* ⚡ Reaction Time */}
+            {isOn("reaction") && (
+              <MetricCard icon={<Zap className="h-5 w-5" />} label="Reaction Time" value={(data.summary.reactionTime ?? 0).toFixed(2)} unit="s" />
+            )}
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card className="border-border bg-card">
-            <CardHeader><CardTitle className="text-lg">Speed Over Time</CardTitle></CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={260}>
-                {data.speed.length > 0 ? (
-                  <LineChart data={data.speed}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="time" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-                    <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} unit=" m/s" />
-                    <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-                    <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3, fill: "hsl(var(--primary))" }} name="Speed" />
-                  </LineChart>
-                ) : (
-                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No speed data available.</div>
-                )}
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+        {/* Selected metric chips so coach knows what was tested */}
+        {enabledLabels.length > 0 && enabledLabels.length < METRIC_CATALOG.length && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Tested:</span>
+            {enabledLabels.map(label => (
+              <Badge key={label} variant="secondary" className="text-[10px]">{label}</Badge>
+            ))}
+          </div>
+        )}
 
-          <Card className="border-border bg-card">
-            <CardHeader><CardTitle className="text-lg">Jump Height</CardTitle></CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={260}>
-                {data.jumpHeight.length > 0 ? (
-                  <BarChart data={data.jumpHeight}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="time" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-                    <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} unit=" cm" />
-                    <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Height" />
-                  </BarChart>
-                ) : (
-                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No jump data available.</div>
-                )}
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          {isOn("speed") && (
+            <Card className="border-border bg-card">
+              <CardHeader><CardTitle className="text-lg">Speed Over Time</CardTitle></CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={260}>
+                  {data.speed.length > 0 ? (
+                    <LineChart data={data.speed}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="time" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                      <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} unit=" m/s" />
+                      <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
+                      <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3, fill: "hsl(var(--primary))" }} name="Speed" />
+                    </LineChart>
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No speed data available.</div>
+                  )}
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+
+          {isOn("jump") && (
+            <Card className="border-border bg-card">
+              <CardHeader><CardTitle className="text-lg">Jump Height</CardTitle></CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={260}>
+                  {data.jumpHeight.length > 0 ? (
+                    <BarChart data={data.jumpHeight}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="time" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                      <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} unit=" cm" />
+                      <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
+                      <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Height" />
+                    </BarChart>
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No jump data available.</div>
+                  )}
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Radar with comparison */}
-          <Card className="border-border bg-card lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center justify-between flex-wrap gap-3">
-                <span>Movement Pattern Analysis</span>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    <Label htmlFor="compare-toggle" className="text-sm font-normal text-muted-foreground">Compare</Label>
-                    <Switch id="compare-toggle" checked={compareMode} onCheckedChange={setCompareMode} />
+          {isOn("movement") && (
+            <Card className="border-border bg-card lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center justify-between flex-wrap gap-3">
+                  <span>Movement Pattern Analysis</span>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                      <Label htmlFor="compare-toggle" className="text-sm font-normal text-muted-foreground">Compare</Label>
+                      <Switch id="compare-toggle" checked={compareMode} onCheckedChange={setCompareMode} />
+                    </div>
+                    {compareMode && (
+                      <Select value={String(comparePlayerId)} onValueChange={setComparePlayerId}>
+                        <SelectTrigger className="w-[180px] h-8"><SelectValue placeholder="Select player" /></SelectTrigger>
+                        <SelectContent>
+                          {otherPlayers.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.user?.username || p.name || `Player ${p.id}`}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
-                  {compareMode && (
-                    <Select value={String(comparePlayerId)} onValueChange={setComparePlayerId}>
-                      <SelectTrigger className="w-[180px] h-8"><SelectValue placeholder="Select player" /></SelectTrigger>
-                      <SelectContent>
-                        {otherPlayers.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.user?.username || p.name || `Player ${p.id}`}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex justify-center">
-              <ResponsiveContainer width="100%" height={380}>
-                <RadarChart data={radarData}>
-                  <PolarGrid stroke="hsl(var(--border))" />
-                  <PolarAngleAxis dataKey="metric" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
-                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-                  <Radar name={playerName} dataKey={playerName} stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.25} strokeWidth={2} />
-                  {compareMode && comparePlayer && compareData && (
-                    <Radar name={comparePlayer?.user?.username || comparePlayer?.name || `Player ${comparePlayer.id}`} dataKey={comparePlayer?.user?.username || comparePlayer?.name || `Player ${comparePlayer.id}`} stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.15} strokeWidth={2} />
-                  )}
-                  <Legend />
-                  <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-                </RadarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex justify-center">
+                <ResponsiveContainer width="100%" height={380}>
+                  <RadarChart data={radarData}>
+                    <PolarGrid stroke="hsl(var(--border))" />
+                    <PolarAngleAxis dataKey="metric" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
+                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                    <Radar name={playerName} dataKey={playerName} stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.25} strokeWidth={2} />
+                    {compareMode && comparePlayer && compareData && (
+                      <Radar name={comparePlayer?.user?.username || comparePlayer?.name || `Player ${comparePlayer.id}`} dataKey={comparePlayer?.user?.username || comparePlayer?.name || `Player ${comparePlayer.id}`} stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.15} strokeWidth={2} />
+                    )}
+                    <Legend />
+                    <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
         </div>
+
+        {/* 🧬 Biomechanical Analysis Section */}
+        {isOn("form") && (
+          <div className="grid gap-6">
+            <Card className="border-border bg-card">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-primary" /> Joint Angles & Form Stability
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-6 md:grid-cols-3">
+                  <div className="h-[220px]">
+                    <p className="text-xs font-medium text-muted-foreground mb-4 text-center">Knee Extension/Flexion (°)</p>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={data.biomechanics?.kneeAngles || []}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                        <XAxis dataKey="time" hide />
+                        <YAxis domain={[0, 180]} tick={{ fontSize: 10 }} />
+                        <Tooltip contentStyle={{ fontSize: 11 }} />
+                        <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="h-[220px]">
+                    <p className="text-xs font-medium text-muted-foreground mb-4 text-center">Hip Torso Angle (°)</p>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={data.biomechanics?.hipAngles || []}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                        <XAxis dataKey="time" hide />
+                        <YAxis domain={[0, 180]} tick={{ fontSize: 10 }} />
+                        <Tooltip contentStyle={{ fontSize: 11 }} />
+                        <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="h-[220px]">
+                    <p className="text-xs font-medium text-muted-foreground mb-4 text-center">Arm Swing ROM (°)</p>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={data.biomechanics?.armAngles || []}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                        <XAxis dataKey="time" hide />
+                        <YAxis domain={[0, 180]} tick={{ fontSize: 10 }} />
+                        <Tooltip contentStyle={{ fontSize: 11 }} />
+                        <Line type="monotone" dataKey="value" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -870,6 +1051,22 @@ const CreateTrainingDialog: React.FC<{ open: boolean; onClose: () => void; onCre
   const [newSpeed, setNewSpeed] = useState({ time: "", value: 0 });
   const [newJump, setNewJump] = useState({ time: "", value: 0 });
 
+  // Which metric groups the user wants analyzed (applies to both manual & video).
+  const [selectedMetrics, setSelectedMetrics] = useState<MetricId[]>(["speed", "jump", "movement"]);
+
+  // Mechanics & reaction inputs (kept local; merged into summary on submit).
+  const [cdAngle, setCdAngle] = useState<number>(0);
+  const [cdReaccel, setCdReaccel] = useState<number>(0);
+  const [kneeAngle, setKneeAngle] = useState<number>(0);
+  const [hipAngle, setHipAngle] = useState<number>(0);
+  const [armSwingAngle, setArmSwingAngle] = useState<number>(0);
+  const [formScore, setFormScore] = useState<number>(0);
+  const [reactionTime, setReactionTime] = useState<number>(0);
+
+  const isMetricOn = (m: MetricId) => selectedMetrics.includes(m);
+  const toggleMetric = (m: MetricId) =>
+    setSelectedMetrics(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
+
   const addSpeed = () => {
     if (!newSpeed.time) { toast.error("Enter a time label."); return; }
     setPlayerData(prev => {
@@ -894,12 +1091,28 @@ const CreateTrainingDialog: React.FC<{ open: boolean; onClose: () => void; onCre
     setPlayerData(prev => ({ ...prev, movement: prev.movement.map(m => m.metric === metric ? { ...m, value } : m) }));
   };
 
+  const buildMergedSummary = () => ({
+    ...playerData.summary,
+    ...(isMetricOn("agility") ? { cdAngle, cdReaccelTime: cdReaccel } : {}),
+    ...(isMetricOn("form") ? { kneeAngle, hipAngle, armSwingAngle, formScore } : {}),
+    ...(isMetricOn("reaction") ? { reactionTime } : {}),
+  });
+
+  const resetForm = () => {
+    setTitle(""); setDate(""); setPlayerId(""); setNotes(""); setVideoFile(null);
+    setSessionId(""); setPlayerData(emptyPlayerData());
+    setSelectedMetrics(["speed", "jump", "movement"]);
+    setCdAngle(0); setCdReaccel(0); setKneeAngle(0); setHipAngle(0);
+    setArmSwingAngle(0); setFormScore(0); setReactionTime(0);
+  };
+
   const handleSubmit = () => {
     if (!title || !date || !playerId) { toast.error("Please fill in all required fields."); return; }
-    
+    if (selectedMetrics.length === 0) { toast.error("Select at least one metric to analyze."); return; }
+
     if (inputMode === "video") {
       if (!videoFile) { toast.error("Please select a video file."); return; }
-      
+
       const formData = new FormData();
       formData.append("title", title);
       formData.append("date", date);
@@ -907,19 +1120,22 @@ const CreateTrainingDialog: React.FC<{ open: boolean; onClose: () => void; onCre
       if (sessionId) formData.append("sessionId", sessionId);
       formData.append("notes", notes);
       formData.append("video", videoFile);
-      
+      formData.append("selectedMetrics", JSON.stringify(selectedMetrics));
+
       onCreate(formData);
     } else {
       const hasManualData = playerData.speed.length > 0 || playerData.jumpHeight.length > 0;
       onCreate({
         title, date, playerId: Number(playerId), sessionId: sessionId ? Number(sessionId) : undefined,
         notes, inputMode: "manual",
-        analysisData: hasManualData ? playerData : emptyPlayerData(),
+        selectedMetrics,
+        analysisData: hasManualData
+          ? { ...playerData, summary: buildMergedSummary() }
+          : { ...emptyPlayerData(), summary: buildMergedSummary() },
       });
     }
-    
-    setTitle(""); setDate(""); setPlayerId(""); setNotes(""); setVideoFile(null);
-    setSessionId(""); setPlayerData(emptyPlayerData());
+
+    resetForm();
   };
 
   return (
@@ -949,6 +1165,47 @@ const CreateTrainingDialog: React.FC<{ open: boolean; onClose: () => void; onCre
             </div>
           </div>
 
+          {/* ── Metrics to analyze (multi-select, applies to BOTH manual & video) ── */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-semibold">Metrics to Analyze *</Label>
+              <div className="flex gap-2">
+                <button type="button" className="text-[11px] text-primary hover:underline" onClick={() => setSelectedMetrics([...ALL_METRIC_IDS])}>Select all</button>
+                <span className="text-[11px] text-muted-foreground">·</span>
+                <button type="button" className="text-[11px] text-muted-foreground hover:underline" onClick={() => setSelectedMetrics([])}>Clear</button>
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Pick one or more — only the chosen metrics will be tested and shown in the report.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 border border-border rounded-lg p-3">
+              {METRIC_CATALOG.map(m => {
+                const on = isMetricOn(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => toggleMetric(m.id)}
+                    className={`flex items-start gap-2 rounded-md border p-2 text-left transition-colors ${
+                      on
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border bg-background text-muted-foreground hover:bg-secondary/50"
+                    }`}
+                  >
+                    <div className="mt-0.5 shrink-0">
+                      {on ? <CheckSquare className="h-4 w-4 text-primary" /> : <SquareIcon className="h-4 w-4" />}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold leading-tight">{m.label}</div>
+                      <div className="text-[10px] leading-tight text-muted-foreground">{m.description}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {selectedMetrics.length === 0 && (
+              <p className="text-[11px] text-destructive">Select at least one metric.</p>
+            )}
+          </div>
+
           {inputMode === "video" && (
             <div className="space-y-2">
               <Label>Upload Training Video</Label>
@@ -957,7 +1214,9 @@ const CreateTrainingDialog: React.FC<{ open: boolean; onClose: () => void; onCre
                   <div className="space-y-3">
                     <div className="flex justify-center"><Loader2 className="h-8 w-8 text-primary animate-spin" /></div>
                     <p className="text-sm font-medium text-foreground">AI Analysis in Progress...</p>
-                    <p className="text-xs text-muted-foreground italic">Extracting metrics: speed, jumps, movement patterns</p>
+                    <p className="text-xs text-muted-foreground italic">
+                      Extracting: {selectedMetrics.map(id => METRIC_CATALOG.find(m => m.id === id)?.label).filter(Boolean).join(", ") || "selected metrics"}
+                    </p>
                   </div>
                 ) : (
                   <>
@@ -968,98 +1227,161 @@ const CreateTrainingDialog: React.FC<{ open: boolean; onClose: () => void; onCre
                   </>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">AI will analyze player movement, speed, and jumps from the video.</p>
+              <p className="text-xs text-muted-foreground">AI will analyze only the selected metric groups from the video.</p>
             </div>
           )}
 
           {inputMode === "manual" && (
             <div className="space-y-4">
               {/* Speed Readings */}
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold">Speed Readings (m/s)</Label>
-                <div className="border border-border rounded-lg p-3 space-y-2">
-                  <div className="grid grid-cols-[1fr_80px_auto] gap-2 items-end">
-                    <div className="space-y-1">
-                      <span className="text-[10px] text-muted-foreground">Time Label</span>
-                      <Input className="h-7 text-xs" placeholder="e.g. 0:30" value={newSpeed.time} onChange={e => setNewSpeed(p => ({ ...p, time: e.target.value }))} />
+              {isMetricOn("speed") && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Speed Readings (m/s)</Label>
+                  <div className="border border-border rounded-lg p-3 space-y-2">
+                    <div className="grid grid-cols-[1fr_80px_auto] gap-2 items-end">
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-muted-foreground">Time Label</span>
+                        <Input className="h-7 text-xs" placeholder="e.g. 0:30" value={newSpeed.time} onChange={e => setNewSpeed(p => ({ ...p, time: e.target.value }))} />
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-muted-foreground">Speed</span>
+                        <Input type="number" step="0.1" min={0} className="h-7 text-xs" value={newSpeed.value} onChange={e => setNewSpeed(p => ({ ...p, value: parseFloat(e.target.value) || 0 }))} />
+                      </div>
+                      <Button size="sm" className="h-7 px-2" onClick={addSpeed}><Plus className="h-3 w-3" /></Button>
                     </div>
-                    <div className="space-y-1">
-                      <span className="text-[10px] text-muted-foreground">Speed</span>
-                      <Input type="number" step="0.1" min={0} className="h-7 text-xs" value={newSpeed.value} onChange={e => setNewSpeed(p => ({ ...p, value: parseFloat(e.target.value) || 0 }))} />
-                    </div>
-                    <Button size="sm" className="h-7 px-2" onClick={addSpeed}><Plus className="h-3 w-3" /></Button>
+                    {playerData.speed.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {playerData.speed.map((s, i) => (
+                          <Badge key={i} variant="secondary" className="text-[10px] gap-1">
+                            {s.time}: {s.value} m/s
+                            <button className="text-destructive hover:text-destructive/80" onClick={() => setPlayerData(prev => ({ ...prev, speed: prev.speed.filter((_, j) => j !== i) }))}><X className="h-2.5 w-2.5" /></button>
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {playerData.speed.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {playerData.speed.map((s, i) => (
-                        <Badge key={i} variant="secondary" className="text-[10px] gap-1">
-                          {s.time}: {s.value} m/s
-                          <button className="text-destructive hover:text-destructive/80" onClick={() => setPlayerData(prev => ({ ...prev, speed: prev.speed.filter((_, j) => j !== i) }))}><X className="h-2.5 w-2.5" /></button>
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
                 </div>
-              </div>
+              )}
 
               {/* Jump Heights */}
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold">Jump Heights (cm)</Label>
-                <div className="border border-border rounded-lg p-3 space-y-2">
-                  <div className="grid grid-cols-[1fr_80px_auto] gap-2 items-end">
+              {isMetricOn("jump") && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Jump Heights (cm)</Label>
+                  <div className="border border-border rounded-lg p-3 space-y-2">
+                    <div className="grid grid-cols-[1fr_80px_auto] gap-2 items-end">
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-muted-foreground">Label</span>
+                        <Input className="h-7 text-xs" placeholder="e.g. Jump 1" value={newJump.time} onChange={e => setNewJump(p => ({ ...p, time: e.target.value }))} />
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-muted-foreground">Height</span>
+                        <Input type="number" min={0} className="h-7 text-xs" value={newJump.value} onChange={e => setNewJump(p => ({ ...p, value: parseInt(e.target.value) || 0 }))} />
+                      </div>
+                      <Button size="sm" className="h-7 px-2" onClick={addJump}><Plus className="h-3 w-3" /></Button>
+                    </div>
+                    {playerData.jumpHeight.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {playerData.jumpHeight.map((j, i) => (
+                          <Badge key={i} variant="secondary" className="text-[10px] gap-1">
+                            {j.time}: {j.value} cm
+                            <button className="text-destructive hover:text-destructive/80" onClick={() => setPlayerData(prev => ({ ...prev, jumpHeight: prev.jumpHeight.filter((_, k) => k !== i) }))}><X className="h-2.5 w-2.5" /></button>
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Movement Metrics radar */}
+              {isMetricOn("movement") && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Movement Metrics (0–100)</Label>
+                  <div className="border border-border rounded-lg p-3 space-y-2">
+                    {playerData.movement.map(m => (
+                      <div key={m.metric} className="grid grid-cols-[1fr_80px] items-center gap-2">
+                        <span className="text-xs text-muted-foreground">{m.metric}</span>
+                        <Input type="number" min={0} max={100} className="h-7 text-xs" value={m.value} onChange={e => updateMovement(m.metric, parseInt(e.target.value) || 0)} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Agility / Change of Direction */}
+              {isMetricOn("agility") && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Agility / Change of Direction</Label>
+                  <div className="border border-border rounded-lg p-3 grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <span className="text-[10px] text-muted-foreground">Label</span>
-                      <Input className="h-7 text-xs" placeholder="e.g. Jump 1" value={newJump.time} onChange={e => setNewJump(p => ({ ...p, time: e.target.value }))} />
+                      <span className="text-[10px] text-muted-foreground">Direction Change Angle (°)</span>
+                      <Input type="number" min={0} max={180} className="h-7 text-xs" value={cdAngle} onChange={e => setCdAngle(parseFloat(e.target.value) || 0)} />
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[10px] text-muted-foreground">Height</span>
-                      <Input type="number" min={0} className="h-7 text-xs" value={newJump.value} onChange={e => setNewJump(p => ({ ...p, value: parseInt(e.target.value) || 0 }))} />
+                      <span className="text-[10px] text-muted-foreground">Re-acceleration Time (s)</span>
+                      <Input type="number" step="0.01" min={0} className="h-7 text-xs" value={cdReaccel} onChange={e => setCdReaccel(parseFloat(e.target.value) || 0)} />
                     </div>
-                    <Button size="sm" className="h-7 px-2" onClick={addJump}><Plus className="h-3 w-3" /></Button>
-                  </div>
-                  {playerData.jumpHeight.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {playerData.jumpHeight.map((j, i) => (
-                        <Badge key={i} variant="secondary" className="text-[10px] gap-1">
-                          {j.time}: {j.value} cm
-                          <button className="text-destructive hover:text-destructive/80" onClick={() => setPlayerData(prev => ({ ...prev, jumpHeight: prev.jumpHeight.filter((_, k) => k !== i) }))}><X className="h-2.5 w-2.5" /></button>
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Movement Metrics */}
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold">Movement Metrics (0-100)</Label>
-                <div className="border border-border rounded-lg p-3 space-y-2">
-                  {playerData.movement.map(m => (
-                    <div key={m.metric} className="grid grid-cols-[1fr_80px] items-center gap-2">
-                      <span className="text-xs text-muted-foreground">{m.metric}</span>
-                      <Input type="number" min={0} max={100} className="h-7 text-xs" value={m.value} onChange={e => updateMovement(m.metric, parseInt(e.target.value) || 0)} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Summary Fields */}
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold">Additional Summary</Label>
-                <div className="border border-border rounded-lg p-3 grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-muted-foreground">Distance (m)</span>
-                    <Input type="number" min={0} className="h-7 text-xs" value={playerData.summary.distance} onChange={e => setPlayerData(prev => ({ ...prev, summary: { ...prev.summary, distance: parseInt(e.target.value) || 0 } }))} />
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-muted-foreground">Sprints</span>
-                    <Input type="number" min={0} className="h-7 text-xs" value={playerData.summary.sprints} onChange={e => setPlayerData(prev => ({ ...prev, summary: { ...prev.summary, sprints: parseInt(e.target.value) || 0 } }))} />
                   </div>
                 </div>
-              </div>
+              )}
 
-              {playerData.speed.length === 0 && playerData.jumpHeight.length === 0 && (
-                <p className="text-[11px] text-muted-foreground text-center">No data entered yet. Default test data will be used if left empty.</p>
+              {/* Body Mechanics / Form */}
+              {isMetricOn("form") && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Body Mechanics / Form Analysis</Label>
+                  <div className="border border-border rounded-lg p-3 grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-muted-foreground">Knee Angle (°)</span>
+                      <Input type="number" min={0} max={180} className="h-7 text-xs" value={kneeAngle} onChange={e => setKneeAngle(parseFloat(e.target.value) || 0)} />
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-muted-foreground">Hip Angle (°)</span>
+                      <Input type="number" min={0} max={180} className="h-7 text-xs" value={hipAngle} onChange={e => setHipAngle(parseFloat(e.target.value) || 0)} />
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-muted-foreground">Arm Swing Angle (°)</span>
+                      <Input type="number" min={0} max={180} className="h-7 text-xs" value={armSwingAngle} onChange={e => setArmSwingAngle(parseFloat(e.target.value) || 0)} />
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-muted-foreground">Form Score (0–100)</span>
+                      <Input type="number" min={0} max={100} className="h-7 text-xs" value={formScore} onChange={e => setFormScore(parseInt(e.target.value) || 0)} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Reaction Time */}
+              {isMetricOn("reaction") && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Reaction Time</Label>
+                  <div className="border border-border rounded-lg p-3 grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-muted-foreground">First-Movement Latency (s)</span>
+                      <Input type="number" step="0.01" min={0} className="h-7 text-xs" value={reactionTime} onChange={e => setReactionTime(parseFloat(e.target.value) || 0)} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Distance & Sprints */}
+              {isMetricOn("distance") && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Distance &amp; Sprints</Label>
+                  <div className="border border-border rounded-lg p-3 grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-muted-foreground">Distance (m)</span>
+                      <Input type="number" min={0} className="h-7 text-xs" value={playerData.summary.distance} onChange={e => setPlayerData(prev => ({ ...prev, summary: { ...prev.summary, distance: parseInt(e.target.value) || 0 } }))} />
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-muted-foreground">Sprints</span>
+                      <Input type="number" min={0} className="h-7 text-xs" value={playerData.summary.sprints} onChange={e => setPlayerData(prev => ({ ...prev, summary: { ...prev.summary, sprints: parseInt(e.target.value) || 0 } }))} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedMetrics.length > 0 && playerData.speed.length === 0 && playerData.jumpHeight.length === 0 && (
+                <p className="text-[11px] text-muted-foreground text-center">Tip: leave inputs blank to fall back to baseline test data.</p>
               )}
             </div>
           )}
@@ -1429,7 +1751,7 @@ const TrainingAnalysisTab: React.FC<{ players: any[] }> = ({ players }) => {
   };
   const overallOf = (a: TrainingAnalysis) => {
     const p = playerOf(a);
-    return deriveMetrics(a.analysisData.movement, a.analysisData.summary, p?.position || "").overall;
+    return deriveMetrics(a.analysisData?.movement || [], a.analysisData?.summary || {}, p?.position || "").overall;
   };
 
   const emptyState = (
@@ -1462,8 +1784,8 @@ const TrainingAnalysisTab: React.FC<{ players: any[] }> = ({ players }) => {
           { value: "name", label: "Name", sortValue: (a) => a.title.toLowerCase() },
           { value: "player", label: "Player", sortValue: (a) => pName(a).toLowerCase() },
           { value: "overall", label: "Overall", sortValue: overallOf },
-          { value: "topSpeed", label: "Top Speed", sortValue: (a) => a.analysisData.summary.topSpeed ?? 0 },
-          { value: "maxJump", label: "Max Jump", sortValue: (a) => a.analysisData.summary.maxJump ?? 0 },
+          { value: "topSpeed", label: "Top Speed", sortValue: (a) => a.analysisData?.summary?.topSpeed ?? 0 },
+          { value: "maxJump", label: "Max Jump", sortValue: (a) => a.analysisData?.summary?.maxJump ?? 0 },
         ]}
         filterOptions={[
           { value: "manual", label: "Manual", predicate: (a) => a.inputMode === "manual" },
@@ -1479,7 +1801,7 @@ const TrainingAnalysisTab: React.FC<{ players: any[] }> = ({ players }) => {
           { key: "position", label: "Position", render: (a) => <span className="text-sm text-muted-foreground">{playerOf(a)?.position || "—"}</span> },
           { key: "date", label: "Date", render: (a) => <span className="text-sm">{new Date(a.date).toLocaleDateString()}</span> },
           { key: "overall", label: "Overall", render: (a) => <span className="font-bold text-primary tabular-nums">{overallOf(a)}</span> },
-          { key: "topSpeed", label: "Top Speed", render: (a) => <span className="text-sm tabular-nums">{(a.analysisData.summary.topSpeed ?? 0).toFixed(1)} m/s</span> },
+          { key: "topSpeed", label: "Top Speed", render: (a) => <span className="text-sm tabular-nums">{(a.analysisData?.summary?.topSpeed ?? 0).toFixed(1)} m/s</span> },
           { key: "mode", label: "Mode", render: (a) => <Badge variant="secondary" className="text-xs">{a.inputMode === "video" ? "Video" : "Manual"}</Badge> },
         ]}
         onView={(a) => setViewing(a)}

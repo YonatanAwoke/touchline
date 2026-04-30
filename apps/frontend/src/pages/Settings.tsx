@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -11,20 +11,63 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Camera, Copy, ExternalLink, Shield, Bell, Globe, Palette, Moon, Sun, Monitor } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { useQuery, useMutation } from "@tanstack/react-query";
+
+const fetchUserProfile = async (userId: number) => {
+  const res = await fetch(`/api/users/${userId}`);
+  if (!res.ok) throw new Error("Failed to fetch user");
+  return res.json();
+};
+
+const fetchOrganization = async (orgId: number) => {
+  const res = await fetch(`/api/organizations/${orgId}`);
+  if (!res.ok) throw new Error("Failed to fetch organization");
+  return res.json();
+};
+
+const updateProfile = async ({ userId, data }: { userId: number; data: any }) => {
+  const res = await fetch(`/api/users/${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to update profile");
+  return res.json();
+};
+
+const changePassword = async (data: any) => {
+  const res = await fetch(`/api/auth/change-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to change password");
+  return res.json();
+};
 
 const Settings = () => {
   const { toast } = useToast();
+  const { user } = useAuth();
 
   // Profile form state
   const [profile, setProfile] = useState({
-    firstName: "Demo",
-    lastName: "User",
-    phone: "+1800-000",
-    email: "demo@touchline.com",
-    city: "Manchester",
-    state: "Greater Manchester",
-    postcode: "M1 1AA",
-    country: "United Kingdom",
+    firstName: "",
+    lastName: "",
+    username: "",
+    phone: "",
+    email: "",
+    city: "",
+    state: "",
+    postcode: "",
+    country: "",
+  });
+
+  // Password state
+  const [passwordState, setPasswordState] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
   });
 
   // System settings state
@@ -40,10 +83,80 @@ const Settings = () => {
     soundAlerts: false,
   });
 
-  const profileLink = "https://app.touchline.io/u/demo-user";
+  const { data: userProfile, refetch: refetchUser } = useQuery({
+    queryKey: ["userProfile", user?.id],
+    queryFn: () => fetchUserProfile(user!.id),
+    enabled: !!user?.id,
+  });
+
+  const { data: organization } = useQuery({
+    queryKey: ["organization", user?.organizationId],
+    queryFn: () => fetchOrganization(user!.organizationId!),
+    enabled: !!user?.organizationId,
+  });
+
+  useEffect(() => {
+    if (userProfile) {
+      setProfile((prev) => ({
+        ...prev,
+        firstName: userProfile.firstName || "",
+        lastName: userProfile.lastName || "",
+        username: userProfile.username || "",
+        email: userProfile.email || "",
+      }));
+    }
+  }, [userProfile]);
+
+  const profileMutation = useMutation({
+    mutationFn: updateProfile,
+    onSuccess: () => {
+      toast({ title: "Profile updated", description: "Your account settings have been saved." });
+      refetchUser();
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update profile.", variant: "destructive" });
+    },
+  });
+
+  const passwordMutation = useMutation({
+    mutationFn: changePassword,
+    onSuccess: () => {
+      toast({ title: "Password updated", description: "Your password has been changed successfully." });
+      setPasswordState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to change password. Please check your current password.", variant: "destructive" });
+    },
+  });
+
+  const profileLink = `https://app.touchline.io/u/${userProfile?.username || "user"}`;
 
   const handleProfileUpdate = () => {
-    toast({ title: "Profile updated", description: "Your account settings have been saved." });
+    if (!user) return;
+    profileMutation.mutate({
+      userId: user.id,
+      data: {
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        username: profile.username,
+        email: profile.email,
+      },
+    });
+  };
+
+  const handlePasswordUpdate = () => {
+    if (!passwordState.currentPassword || !passwordState.newPassword) {
+      toast({ title: "Validation Error", description: "Please enter your current and new password.", variant: "destructive" });
+      return;
+    }
+    if (passwordState.newPassword !== passwordState.confirmPassword) {
+      toast({ title: "Validation Error", description: "New password and confirmation do not match.", variant: "destructive" });
+      return;
+    }
+    passwordMutation.mutate({
+      currentPassword: passwordState.currentPassword,
+      newPassword: passwordState.newPassword,
+    });
   };
 
   const handleCopyLink = () => {
@@ -52,10 +165,10 @@ const Settings = () => {
   };
 
   const stats = [
-    { label: "Players managed", value: 32 },
     { label: "Matches coached", value: 26 },
-    { label: "Active clubs", value: 6 },
   ];
+
+  const initials = `${profile.firstName?.charAt(0) || ""}${profile.lastName?.charAt(0) || ""}`.toUpperCase() || userProfile?.username?.charAt(0).toUpperCase() || "U";
 
   return (
     <DashboardLayout title="Settings" subtitle="Manage your profile and preferences">
@@ -80,14 +193,16 @@ const Settings = () => {
               <div className="relative mb-3">
                 <Avatar className="h-24 w-24 border-4 border-background shadow-md">
                   <AvatarImage src="" />
-                  <AvatarFallback className="bg-primary/10 text-primary text-2xl font-bold">DU</AvatarFallback>
+                  <AvatarFallback className="bg-primary/10 text-primary text-2xl font-bold">{initials}</AvatarFallback>
                 </Avatar>
                 <button className="absolute bottom-0 right-0 h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-md hover:bg-primary/90 transition-colors">
                   <Camera size={14} />
                 </button>
               </div>
-              <h3 className="text-lg font-semibold text-foreground">Demo User</h3>
-              <p className="text-sm text-muted-foreground">Touchline FC</p>
+              <h3 className="text-lg font-semibold text-foreground">
+                {profile.firstName || profile.lastName ? `${profile.firstName} ${profile.lastName}` : userProfile?.username || "User"}
+              </h3>
+              <p className="text-sm text-muted-foreground">{organization?.name || "No Organization"}</p>
 
               <Separator className="my-4" />
 
@@ -153,43 +268,43 @@ const Settings = () => {
                     <Input value={profile.lastName} onChange={(e) => setProfile({ ...profile, lastName: e.target.value })} />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-sm text-muted-foreground">Phone Number</Label>
-                    <Input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} />
+                    <Label className="text-sm text-muted-foreground">Username</Label>
+                    <Input value={profile.username} onChange={(e) => setProfile({ ...profile, username: e.target.value })} />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-sm text-muted-foreground">Email Address</Label>
                     <Input value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
                   </div>
                   <div className="space-y-2">
+                    <Label className="text-sm text-muted-foreground">Phone Number</Label>
+                    <Input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} placeholder="Not supported yet" disabled />
+                  </div>
+                  <div className="space-y-2">
                     <Label className="text-sm text-muted-foreground">City</Label>
-                    <Input value={profile.city} onChange={(e) => setProfile({ ...profile, city: e.target.value })} />
+                    <Input value={profile.city} onChange={(e) => setProfile({ ...profile, city: e.target.value })} placeholder="Not supported yet" disabled />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-sm text-muted-foreground">State / County</Label>
-                    <Input value={profile.state} onChange={(e) => setProfile({ ...profile, state: e.target.value })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-sm text-muted-foreground">Postcode</Label>
-                    <Input value={profile.postcode} onChange={(e) => setProfile({ ...profile, postcode: e.target.value })} />
+                    <Input value={profile.state} onChange={(e) => setProfile({ ...profile, state: e.target.value })} placeholder="Not supported yet" disabled />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-sm text-muted-foreground">Country</Label>
-                    <Select value={profile.country} onValueChange={(v) => setProfile({ ...profile, country: v })}>
+                    <Select value={profile.country} onValueChange={(v) => setProfile({ ...profile, country: v })} disabled>
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue placeholder="Not supported yet" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="United Kingdom">United Kingdom</SelectItem>
                         <SelectItem value="United States">United States</SelectItem>
                         <SelectItem value="Germany">Germany</SelectItem>
-                        <SelectItem value="Spain">Spain</SelectItem>
-                        <SelectItem value="France">France</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
-                <div className="mt-6">
-                  <Button onClick={handleProfileUpdate}>Update</Button>
+                <div className="mt-6 flex items-center gap-3">
+                  <Button onClick={handleProfileUpdate} disabled={profileMutation.isPending}>
+                    {profileMutation.isPending ? "Saving..." : "Update"}
+                  </Button>
                 </div>
               </TabsContent>
 
@@ -198,35 +313,36 @@ const Settings = () => {
                 <div className="space-y-6">
                   <div>
                     <h3 className="text-base font-semibold text-foreground mb-1">Organization Details</h3>
-                    <p className="text-sm text-muted-foreground mb-4">Manage your organization's information and preferences.</p>
+                    <p className="text-sm text-muted-foreground mb-4">You must have CLUB_ADMIN role to manage your organization's information.</p>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div className="space-y-2">
-                      <Label className="text-sm text-muted-foreground">Organization Name</Label>
-                      <Input defaultValue="Touchline FC" />
+                  {organization ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground">Organization Name</Label>
+                        <Input value={organization.name || ""} disabled />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground">Join Code (for invites)</Label>
+                        <Input value={organization.joinCode || "No join code"} disabled />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground">Contact Email</Label>
+                        <Input value={organization.contactEmail || ""} disabled />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground">Contact Phone</Label>
+                        <Input value={organization.contactPhone || ""} disabled />
+                      </div>
+                      <div className="space-y-2 md:col-span-2">
+                        <Label className="text-sm text-muted-foreground">Address</Label>
+                        <Input value={organization.address || ""} disabled />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm text-muted-foreground">Organization Type</Label>
-                      <Select defaultValue="club">
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="club">Football Club</SelectItem>
-                          <SelectItem value="academy">Academy</SelectItem>
-                          <SelectItem value="league">League</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm text-muted-foreground">Contact Email</Label>
-                      <Input defaultValue="admin@touchlinefc.com" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm text-muted-foreground">Contact Phone</Label>
-                      <Input defaultValue="+44 161 000 0000" />
-                    </div>
-                  </div>
-                  <div className="mt-2">
-                    <Button onClick={() => toast({ title: "Saved", description: "Organization settings updated." })}>Save Changes</Button>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Loading organization...</p>
+                  )}
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Note: Direct editing of organization info is disabled from this view for standard coaches.
                   </div>
                 </div>
               </TabsContent>
@@ -328,29 +444,6 @@ const Settings = () => {
                       </div>
                     ))}
                   </div>
-
-                  <Separator />
-
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
-                      <Bell size={15} /> Push & Sound
-                    </h4>
-                    {[
-                      { key: "pushNotifications" as const, label: "Push notifications", desc: "Enable browser push notifications" },
-                      { key: "soundAlerts" as const, label: "Sound alerts", desc: "Play sounds for incoming notifications" },
-                    ].map((item) => (
-                      <div key={item.key} className="flex items-center justify-between rounded-lg border border-border p-4">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{item.label}</p>
-                          <p className="text-xs text-muted-foreground">{item.desc}</p>
-                        </div>
-                        <Switch
-                          checked={notifications[item.key]}
-                          onCheckedChange={(v) => setNotifications({ ...notifications, [item.key]: v })}
-                        />
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </TabsContent>
 
@@ -367,21 +460,36 @@ const Settings = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div className="space-y-2">
                       <Label className="text-sm text-muted-foreground">Current Password</Label>
-                      <Input type="password" placeholder="••••••••" />
+                      <Input
+                        type="password"
+                        placeholder="••••••••"
+                        value={passwordState.currentPassword}
+                        onChange={(e) => setPasswordState({ ...passwordState, currentPassword: e.target.value })}
+                      />
                     </div>
                     <div />
                     <div className="space-y-2">
                       <Label className="text-sm text-muted-foreground">New Password</Label>
-                      <Input type="password" placeholder="••••••••" />
+                      <Input
+                        type="password"
+                        placeholder="••••••••"
+                        value={passwordState.newPassword}
+                        onChange={(e) => setPasswordState({ ...passwordState, newPassword: e.target.value })}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-sm text-muted-foreground">Confirm New Password</Label>
-                      <Input type="password" placeholder="••••••••" />
+                      <Input
+                        type="password"
+                        placeholder="••••••••"
+                        value={passwordState.confirmPassword}
+                        onChange={(e) => setPasswordState({ ...passwordState, confirmPassword: e.target.value })}
+                      />
                     </div>
                   </div>
 
-                  <Button onClick={() => toast({ title: "Password updated", description: "Your password has been changed." })}>
-                    Update Password
+                  <Button onClick={handlePasswordUpdate} disabled={passwordMutation.isPending}>
+                    {passwordMutation.isPending ? "Updating..." : "Update Password"}
                   </Button>
 
                   <Separator />
@@ -418,3 +526,4 @@ const Settings = () => {
 };
 
 export default Settings;
+
