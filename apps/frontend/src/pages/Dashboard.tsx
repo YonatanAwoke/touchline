@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 import { DateRange } from "react-day-picker";
+import { Link } from "react-router-dom";
 
 const resultColor: Record<string, string> = {
   Win: "text-primary",
@@ -64,10 +65,10 @@ const Dashboard: React.FC = () => {
   };
 
   const statCards = [
-    { title: "Total Players", subtitle: "Registered athletes", value: stats?.players ?? 0 },
-    { title: "Total Clubs", subtitle: "Number of teams", value: stats?.teams ?? 0 },
-    { title: "Total Organization", subtitle: "Active organizations", value: stats?.organizations ?? 0 },
-    { title: "Total Coaches", subtitle: "Assigned coaches", value: stats?.coaches ?? 0 },
+    { title: "Total Players", subtitle: "Registered athletes", value: stats?.players ?? 0, path: "/dashboard/players" },
+    { title: "Total Clubs", subtitle: "Number of teams", value: stats?.teams ?? 0, path: "/dashboard/clubs" },
+    { title: "Total Organization", subtitle: "Active organizations", value: stats?.organizations ?? 0, path: "/dashboard/organization" },
+    { title: "Total Coaches", subtitle: "Assigned coaches", value: stats?.coaches ?? 0, path: "/dashboard/coaches" },
   ];
 
   const totalSessions = stats?.progress?.totalSessions || 0;
@@ -91,9 +92,13 @@ const Dashboard: React.FC = () => {
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-lg font-bold text-foreground">{stat.value}</span>
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-foreground text-background">
+                <Link
+                  to={stat.path}
+                  aria-label={`Go to ${stat.title}`}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-foreground text-background transition-transform hover:scale-105 hover:bg-primary hover:text-primary-foreground"
+                >
                   <ArrowUpRight size={16} />
-                </div>
+                </Link>
               </div>
             </CardContent>
           </Card>

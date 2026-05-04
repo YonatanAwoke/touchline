@@ -180,7 +180,21 @@ const players = [
   { id: "p5", name: "Kenji Tanaka", position: "Midfielder" },
 ];
 
-const allPlayerData: Record<string, typeof defaultPlayerData> = {
+const withDefaults = (
+  data: Omit<typeof defaultPlayerData, "insights" | "biomechanics"> &
+    Partial<Pick<typeof defaultPlayerData, "insights" | "biomechanics">>
+): typeof defaultPlayerData => ({
+  insights: [],
+  biomechanics: { kneeAngles: [], hipAngles: [], armAngles: [] },
+  ...data,
+});
+
+type PlayerAnalyticsData = Omit<typeof defaultPlayerData, "insights" | "biomechanics"> & {
+  insights?: string[];
+  biomechanics?: typeof defaultPlayerData.biomechanics;
+};
+
+const allPlayerData: Record<string, PlayerAnalyticsData> = {
   p1: defaultPlayerData,
   p2: {
     speed: [
@@ -519,7 +533,16 @@ const TrainingDetailView: React.FC<{ analysis: TrainingAnalysis; allAnalyses: Tr
   const player = players.find(p => p.id === analysis.playerId)!;
   const playerName = player?.user?.username || player?.name || `Player ${analysis.playerId}`;
   const teamName = player?.team?.name || player?.club?.name || "—";
-  const data = analysis.analysisData;
+  const rawData = analysis.analysisData || {} as any;
+  const data = {
+    ...rawData,
+    movement: rawData.movement || [],
+    summary: rawData.summary || {},
+    speed: rawData.speed || [],
+    jumpHeight: rawData.jumpHeight || [],
+    biomechanics: rawData.biomechanics || null,
+    insights: rawData.insights || [],
+  };
   const enabledMetrics = resolveSelectedMetrics(analysis);
   const isOn = (m: MetricId) => enabledMetrics.includes(m);
   const enabledLabels = enabledMetrics
@@ -567,7 +590,7 @@ const TrainingDetailView: React.FC<{ analysis: TrainingAnalysis; allAnalyses: Tr
 
   const radarData = data.movement.map(m => {
     const entry: Record<string, string | number> = { metric: m.metric, [playerName]: m.value, fullMark: m.fullMark };
-    if (compareMode && compareData) {
+    if (compareMode && compareData?.movement) {
       const cm = compareData.movement.find((cm: any) => cm.metric === m.metric);
       if (cm && comparePlayer) {
           const cpName = comparePlayer?.user?.username || comparePlayer?.name || `Player ${comparePlayer.id}`;
@@ -1037,6 +1060,8 @@ const emptyPlayerData = (): typeof defaultPlayerData => ({
     { metric: "Reaction", value: 0, fullMark: 100 }, { metric: "Coordination", value: 0, fullMark: 100 },
   ],
   summary: { topSpeed: 0, avgSpeed: 0, maxJump: 0, avgJump: 0, distance: 0, sprints: 0 },
+  insights: [],
+  biomechanics: { kneeAngles: [], hipAngles: [], armAngles: [] },
 });
 
 const CreateTrainingDialog: React.FC<{ open: boolean; onClose: () => void; onCreate: (analysis: any) => void; players: any[]; isAnalyzing?: boolean }> = ({ open, onClose, onCreate, players, isAnalyzing }) => {

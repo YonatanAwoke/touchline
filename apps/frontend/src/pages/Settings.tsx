@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { Camera, Copy, ExternalLink, Shield, Bell, Globe, Palette, Moon, Sun, Monitor } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { useTheme } from "@/lib/theme";
 import { useQuery, useMutation } from "@tanstack/react-query";
 
 const fetchUserProfile = async (userId: number) => {
@@ -71,7 +72,7 @@ const Settings = () => {
   });
 
   // System settings state
-  const [theme, setTheme] = useState("system");
+  const { theme, setTheme } = useTheme();
   const [language, setLanguage] = useState("en");
   const [timezone, setTimezone] = useState("europe-london");
   const [notifications, setNotifications] = useState({
@@ -365,7 +366,7 @@ const Settings = () => {
                       ].map((opt) => (
                         <button
                           key={opt.value}
-                          onClick={() => setTheme(opt.value)}
+                          onClick={() => setTheme(opt.value as "light" | "dark" | "system")}
                           className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-all ${
                             theme === opt.value
                               ? "border-primary bg-primary/5"

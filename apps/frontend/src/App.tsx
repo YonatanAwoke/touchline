@@ -26,14 +26,16 @@ import TacticalBoard from "./pages/TacticalBoard";
 import Examination from "./pages/Examination";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "./lib/auth";
+import { ThemeProvider } from "./lib/theme";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <ThemeProvider>
     <TooltipProvider>
       <Toaster />
-      <Sonner />
+      <Sonner richColors closeButton />
       <BrowserRouter>
         <AuthProvider>
           <Routes>
@@ -69,6 +71,7 @@ const App = () => (
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

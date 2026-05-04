@@ -81,15 +81,38 @@ const SidebarBrand: React.FC = () => {
   );
 };
 
+const SIDEBAR_STORAGE_KEY = "touchline-sidebar-open";
+
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title, subtitle }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
+  const [sidebarOpen, setSidebarOpen] = React.useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    return stored === null ? true : stored === "true";
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarOpen));
+  }, [sidebarOpen]);
+
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const [searchValue, setSearchValue] = React.useState("");
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (searchOpen) {
+      // wait for transition to start, then focus
+      requestAnimationFrame(() => searchInputRef.current?.focus());
+    }
+  }, [searchOpen]);
+
   const displayUser = user || { username: "Demo User", email: "demo@touchline.com", id: 0, role: "coach" };
 
   return (
-    <SidebarProvider>
+    <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
       <div className="flex min-h-screen w-full">
         <Sidebar collapsible="icon">
           <SidebarHeader className="items-center px-2">
@@ -142,9 +165,47 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title, subt
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-secondary">
-                <Search size={18} />
-              </button>
+              <div
+                className={`flex h-9 items-center rounded-lg border border-border bg-background overflow-hidden transition-[width] duration-300 ease-out ${
+                  searchOpen ? "w-64" : "w-9"
+                }`}
+              >
+                <button
+                  type="button"
+                  aria-label="Toggle search"
+                  onClick={() => {
+                    if (searchOpen) {
+                      setSearchValue("");
+                      setSearchOpen(false);
+                    } else {
+                      setSearchOpen(true);
+                    }
+                  }}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-secondary"
+                >
+                  <Search size={18} />
+                </button>
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchValue}
+                  onChange={(e) => setSearchValue(e.target.value)}
+                  onBlur={() => {
+                    if (!searchValue) setSearchOpen(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      setSearchValue("");
+                      setSearchOpen(false);
+                    }
+                  }}
+                  placeholder="Search..."
+                  tabIndex={searchOpen ? 0 : -1}
+                  className={`h-full flex-1 bg-transparent pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-opacity duration-200 ${
+                    searchOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+                  }`}
+                />
+              </div>
               <button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-secondary">
                 <Bell size={18} />
               </button>
