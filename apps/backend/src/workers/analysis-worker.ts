@@ -143,4 +143,20 @@ worker.on("error", (err) => {
 
 console.log("Analysis worker started and ready for HF pipeline");
 
+// Health check HTTP server for Render (Web Service requires an open port)
+const PORT = parseInt(process.env.PORT || "10000", 10);
+Bun.serve({
+    port: PORT,
+    fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === "/health") {
+            return new Response(JSON.stringify({ status: "ok", worker: "analysis" }), {
+                headers: { "Content-Type": "application/json" },
+            });
+        }
+        return new Response("Analysis Worker Running", { status: 200 });
+    },
+});
+console.log(`Health check server listening on port ${PORT}`);
+
 export default worker;
