@@ -58,7 +58,7 @@ const worker = new Worker<AnalysisJobData>(
                 headers: { ...form.getHeaders() },
                 maxContentLength: Infinity,
                 maxBodyLength: Infinity,
-                timeout: 600000 // 10 minute timeout for long videos
+                timeout: 1200000 // 20 minute timeout for long videos
             });
 
             const analysisResults = response.data;
