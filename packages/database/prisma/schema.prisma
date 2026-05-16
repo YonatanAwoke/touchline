@@ -27,6 +27,9 @@ model Organization {
   sessions     Session[]
   videos       Video[]
   videoClips   VideoClip[]
+  tacticalBoards TacticalBoard[]
+  matchAnalyses  MatchAnalysis[]
+  playerAnalyses PlayerAnalysis[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -49,6 +52,8 @@ model User {
   playerProfile        Player?
   refreshTokens        RefreshToken[]
   sessionParticipants  SessionParticipant[]
+  todos                Todo[]
+  tacticalBoards       TacticalBoard[]
 }
 
 model RefreshToken {
@@ -114,6 +119,8 @@ model Player {
   updatedAt         DateTime          @updatedAt
   scorers           Scorer[]
   videoClips        VideoClip[]
+  formationPositions FormationPosition[]
+  playerAnalyses     PlayerAnalysis[]
 }
 
 enum Position {
@@ -144,6 +151,8 @@ model Team {
   players        Player[]
   sessions       Session[]
   matches        Match[]
+  formations     Formation[]
+  tacticalBoards TacticalBoard[]
 }
 
 enum DominantFoot {
@@ -181,6 +190,7 @@ model Session {
   playerAnalyses PlayerAnalysis[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+  todos          Todo[]
 }
 
 model SessionParticipant {
@@ -229,7 +239,8 @@ model Video {
   clips         VideoClip[]
   analysisJobs  AnalysisJob[]
   metrics       Metric[]
-
+  matchAnalyses MatchAnalysis[]
+  playerAnalyses PlayerAnalysis[]
   createdAt     DateTime       @default(now())
 }
 
@@ -293,7 +304,9 @@ model Match {
   result      MatchResult?
 
   videos      Video[]
-
+  todos       Todo[]
+  tacticalBoards TacticalBoard[]
+  matchAnalyses MatchAnalysis[]
   createdAt   DateTime @default(now())
 }
 
