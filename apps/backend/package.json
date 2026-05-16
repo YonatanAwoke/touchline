@@ -8,7 +8,7 @@
     "start": "next start",
     "worker": "bun run src/workers/analysis-worker.ts",
     "lint": "eslint",
-    "postinstall": "bun x prisma generate --schema ../../packages/database/prisma/schema.prisma"
+    "postinstall": "npx prisma generate --schema ../../packages/database/prisma/schema.prisma"
   },
   "dependencies": {
     "nodemailer": "^6.9.3",

@@ -1,4 +1,4 @@
-import { PrismaClient, Role, Position, DominantFoot, ProfileVisibility, SessionType, SessionStatus, AttendanceStatus, MatchResult, CompetitionType, VideoStatus, VideoType, ClipSource, AnalysisStatus, AnalysisType } from './generated/client';
+import { PrismaClient, Role, Position, DominantFoot, ProfileVisibility, SessionType, SessionStatus, AttendanceStatus, MatchResult, CompetitionType, VideoStatus, VideoType, ClipSource, AnalysisStatus, AnalysisType } from '@prisma/client';
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -191,8 +191,8 @@ async function main() {
             organizationId: org.id,
             createdBy: coachUser.id,
             formationId: formation.id,
-            annotations: JSON.stringify([{ type: 'arrow', start: { x: 80, y: 80 }, end: { x: 50, y: 90 }, color: 'red' }]),
-            instructions: JSON.stringify([{ time: 0, text: 'Salah to cut inside' }])
+            annotations: [{ type: 'arrow', start: { x: 80, y: 80 }, end: { x: 50, y: 90 }, color: 'red' }] as any,
+            instructions: [{ time: 0, text: 'Salah to cut inside' }] as any
         }
     });
 
@@ -286,8 +286,8 @@ async function main() {
             videoId: video.id,
             inputMode: 'manual',
             organizationId: org.id,
-            matchStats: JSON.stringify({ possession: 65, shotsOnTarget: 8, passes: 540 }),
-            matchEvents: JSON.stringify([{ minute: 14, type: 'Goal', player: 'Salah' }])
+            matchStats: { possession: 65, shotsOnTarget: 8, passes: 540 } as any,
+            matchEvents: [{ minute: 14, type: 'Goal', player: 'Salah' }] as any
         }
     });
 
@@ -298,7 +298,7 @@ async function main() {
             playerId: playerRecords[8].id,
             organizationId: org.id,
             videoId: video.id,
-            analysisData: JSON.stringify({ heatmapPath: '/heatmaps/salah_1.png', distancesCovered: 10.5 })
+            analysisData: { heatmapPath: '/heatmaps/salah_1.png', distancesCovered: 10.5 } as any
         }
     });
 

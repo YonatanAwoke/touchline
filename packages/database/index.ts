@@ -1,4 +1,4 @@
-import { PrismaClient } from "./generated/client"
+import { PrismaClient } from "@prisma/client"
 
 const prismaClientSingleton = () => {
   return new PrismaClient()
@@ -24,4 +24,4 @@ const finalClient = globalThis.prisma ?? prisma
 
 export default finalClient
 
-export * from "./generated/client"
+export * from "@prisma/client"
