@@ -310,6 +310,16 @@ export const videoClipCreateSchema = z.object({
     notes: z.string().optional().nullable(),
 });
 
+/**
+ * Analysis job create schema
+ */
+export const analysisJobCreateSchema = z.object({
+    videoId: z.number().int(),
+    modelVersion: z.string().min(1),
+});
+
+export type AnalysisJobCreateInput = z.infer<typeof analysisJobCreateSchema>;
+
 export type PlayerAnalysisCreateInput = z.infer<typeof playerAnalysisCreateSchema>;
 export type MatchAnalysisCreateInput = z.infer<typeof matchAnalysisCreateSchema>;
 export type MatchCreateInput = z.infer<typeof matchCreateSchema>;
