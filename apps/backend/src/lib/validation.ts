@@ -310,6 +310,8 @@ export const videoClipCreateSchema = z.object({
     label: z.string().optional().nullable(),
     tags: z.array(z.string()).optional().default([]),
     notes: z.string().optional().nullable(),
+    createdBy: z.enum(["MANUAL", "AI"]).optional().default("MANUAL"),
+    metadata: z.record(z.string(), z.any()).optional().default({}),
 });
 
 /**
