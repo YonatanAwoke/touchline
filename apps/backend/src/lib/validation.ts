@@ -260,7 +260,7 @@ export const matchAnalysisUpdateSchema = z.object({
  */
 export const matchCreateSchema = z.object({
     date: z.string(),
-    matchDate: z.string().optional(),
+    matchDate: z.string(),
     teamId: z.number().int(),
     opponent: z.string().min(1),
     competition: z.enum(["LEAGUE", "CUP", "FRIENDLY", "OTHER"]).optional(),
