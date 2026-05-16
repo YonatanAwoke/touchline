@@ -179,10 +179,10 @@ export async function POST(request: Request) {
                 organizationName: user.organization.name
             },
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error("Login error:", error);
         return NextResponse.json(
-            { error: "Internal server error" },
+            { error: "Internal server error", message: error.message },
             { status: 500 }
         );
     }
