@@ -42,8 +42,8 @@ export async function POST(request: Request) {
                 notes: data.notes,
                 inputMode: data.inputMode,
                 videoId: data.videoId,
-                matchStats: data.matchStats,
-                matchEvents: data.matchEvents,
+                matchStats: data.matchStats as any,
+                matchEvents: data.matchEvents as any,
                 organizationId: session.organizationId,
             }
         });

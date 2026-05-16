@@ -83,7 +83,7 @@ export async function POST(request: Request) {
             data: {
                 ...result.data,
                 createdBy: auth.session.userId,
-            }
+            } as any
         });
 
         return NextResponse.json(board, { status: 201 });

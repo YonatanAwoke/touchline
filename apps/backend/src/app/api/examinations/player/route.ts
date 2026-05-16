@@ -76,7 +76,7 @@ export async function POST(request: Request) {
                 inputMode: data.inputMode,
                 status: data.inputMode === "video" ? "QUEUED" : "COMPLETED",
                 videoId: data.videoId,
-                analysisData: data.analysisData,
+                analysisData: data.analysisData as any,
                 organizationId: session.organizationId,
             }
         });
