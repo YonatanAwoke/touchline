@@ -6,17 +6,23 @@ WORKDIR /app
 
 # Copy root package files (monorepo workspace)
 COPY package.json bun.lock* ./
-COPY packages/ ./packages/
+
+# Copy ALL workspace package.json files so bun doesn't think they're missing
+COPY packages/database/package.json ./packages/database/package.json
 COPY apps/backend/package.json ./apps/backend/package.json
 COPY apps/frontend/package.json ./apps/frontend/package.json
-COPY apps/ai-pipeline/package.json* ./apps/ai-pipeline/package.json
-COPY apps/web/package.json* ./apps/web/package.json
+
+# Copy Prisma schema (needed for install + generate)
+COPY packages/database/prisma/ ./packages/database/prisma/
 
 # Install all dependencies from the root (resolves workspace:* protocol)
 RUN bun install
 
-# Copy the rest of the backend app
+# Copy the backend source code
 COPY apps/backend/ ./apps/backend/
+
+# Copy the database package source (for @touchline/database import)
+COPY packages/database/ ./packages/database/
 
 # Generate Prisma client
 RUN bun x prisma generate --schema packages/database/prisma/schema.prisma
