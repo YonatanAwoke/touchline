@@ -260,13 +260,28 @@ export const matchAnalysisUpdateSchema = z.object({
  */
 export const matchCreateSchema = z.object({
     date: z.string(),
-    homeTeamId: z.number().int().optional().nullable(),
-    awayTeamId: z.number().int().optional().nullable(),
-    homeTeamName: z.string().optional().nullable(),
-    awayTeamName: z.string().optional().nullable(),
+    matchDate: z.string().optional(),
+    teamId: z.number().int(),
+    opponent: z.string().min(1),
+    competition: z.enum(["LEAGUE", "CUP", "FRIENDLY", "OTHER"]).optional(),
     venue: z.string().optional().nullable(),
     organizationId: z.number().int(),
     competitionId: z.number().int().optional().nullable(),
+    tacticalBoardId: z.number().int().optional().nullable(),
+    result: z.object({
+        homeScore: z.number().int(),
+        awayScore: z.number().int(),
+        homePenalties: z.number().int().optional().nullable(),
+        awayPenalties: z.number().int().optional().nullable(),
+        details: z.string().optional().nullable(),
+        scorers: z.array(z.object({
+            playerId: z.number().int().optional().nullable(),
+            playerName: z.string().optional().nullable(),
+            minute: z.string().optional().nullable(),
+            isHomeTeam: z.boolean(),
+            goalCount: z.number().int().default(1)
+        }))
+    }).optional()
 });
 
 export const matchUpdateSchema = z.object({
