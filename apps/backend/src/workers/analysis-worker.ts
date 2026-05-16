@@ -5,6 +5,8 @@ import path from "path";
 import fs from "fs";
 import axios from "axios";
 import FormData from "form-data";
+import { downloadFromSupabase } from "../lib/supabase";
+import { mkdir } from "fs/promises";
 
 /**
  * Analysis Worker
@@ -16,6 +18,8 @@ const worker = new Worker<AnalysisJobData>(
         const { videoId, storagePath, playerAnalysisId, organizationId } = job.data;
 
         console.log(`Processing analysis job ${job.id} for video ${videoId}`);
+
+        let tempFilePath = "";
 
         try {
             // 1. Update statuses to PROCESSING
@@ -31,18 +35,24 @@ const worker = new Worker<AnalysisJobData>(
                 data: { status: "PROCESSING" }
             });
 
-            // 2. Prepare file for upload
-            const filePath = path.join(process.cwd(), "uploads", "temp", storagePath);
-            if (!fs.existsSync(filePath)) {
-                throw new Error(`Video file not found at ${filePath}`);
-            }
+            // 2. Download from Supabase Storage to local temp
+            console.log(`Downloading video from Supabase: ${storagePath}`);
+            const videoData = await downloadFromSupabase("videos", storagePath);
+            const videoBuffer = Buffer.from(await videoData.arrayBuffer());
+
+            const uploadDir = path.join(process.cwd(), "uploads", "temp");
+            await mkdir(uploadDir, { recursive: true });
+            
+            const filename = path.basename(storagePath);
+            tempFilePath = path.join(uploadDir, filename);
+            fs.writeFileSync(tempFilePath, videoBuffer);
 
             // 3. Call External AI Pipeline (Hugging Face / FastAPI)
             const aiPipelineUrl = process.env.AI_PIPELINE_URL || "http://localhost:7860";
             console.log(`Sending video to AI Pipeline at ${aiPipelineUrl}/analyze`);
             
             const form = new FormData();
-            form.append("file", fs.createReadStream(filePath));
+            form.append("file", fs.createReadStream(tempFilePath));
 
             const response = await axios.post(`${aiPipelineUrl}/analyze`, form, {
                 headers: { ...form.getHeaders() },
@@ -78,13 +88,6 @@ const worker = new Worker<AnalysisJobData>(
                 });
             });
 
-            // 5. Cleanup temp file
-            try {
-                fs.unlinkSync(filePath);
-            } catch (err) {
-                console.warn(`Could not delete temp file ${filePath}:`, err);
-            }
-
             console.log(`Analysis job ${job.id} completed successfully`);
             return { success: true };
 
@@ -105,6 +108,15 @@ const worker = new Worker<AnalysisJobData>(
             });
 
             throw error;
+        } finally {
+            // 5. Cleanup temp file
+            if (tempFilePath && fs.existsSync(tempFilePath)) {
+                try {
+                    fs.unlinkSync(tempFilePath);
+                } catch (err) {
+                    console.warn(`Could not delete temp file ${tempFilePath}:`, err);
+                }
+            }
         }
     },
     {

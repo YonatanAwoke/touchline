@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@touchline/database";
 import { requireAuth } from "@/lib/security";
 import { playerAnalysisCreateSchema } from "@/lib/validation";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
+import { uploadToSupabase } from "@/lib/supabase";
 import { queueAnalysisJob } from "@/lib/queue";
 
 // Allow large video uploads
@@ -37,17 +36,17 @@ export async function POST(request: Request) {
             if (videoFile) {
                 const arrayBuffer = await videoFile.arrayBuffer();
                 const buffer = Buffer.from(arrayBuffer);
-                const uploadDir = path.join(process.cwd(), "uploads", "temp");
-                await mkdir(uploadDir, { recursive: true });
                 
-                const filename = `${Date.now()}_${videoFile.name}`;
-                const tempPath = path.join(uploadDir, filename);
-                await writeFile(tempPath, buffer);
+                const filename = `player-analyses/${Date.now()}_${videoFile.name.replace(/\s+/g, '_')}`;
+                
+                // Upload to Supabase Storage
+                console.log(`Uploading ${videoFile.name} to Supabase Storage: ${filename}`);
+                await uploadToSupabase("videos", filename, buffer, videoFile.type);
 
-                // Create a Video record first
+                // Create a Video record
                 const video = await prisma.video.create({
                     data: {
-                        storagePath: filename,
+                        storagePath: filename, // Now stores the Supabase path
                         originalName: videoFile.name,
                         type: "TRAINING",
                         status: "PROCESSING",
@@ -66,7 +65,7 @@ export async function POST(request: Request) {
 
         const data = result.data;
         
-        // Create the PlayerAnalysis record immediately
+        // Create the PlayerAnalysis record
         const analysis = await prisma.playerAnalysis.create({
             data: {
                 title: data.title,
@@ -88,7 +87,7 @@ export async function POST(request: Request) {
             if (video) {
                 await queueAnalysisJob({
                     videoId: video.id,
-                    storagePath: video.storagePath,
+                    storagePath: video.storagePath, // This is the Supabase path
                     modelVersion: "v1-yolo-pose",
                     organizationId: session.organizationId,
                     playerAnalysisId: analysis.id

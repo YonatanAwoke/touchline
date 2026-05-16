@@ -209,11 +209,108 @@ export const videoCreateSchema = z.object({
 export type VideoCreateInput = z.infer<typeof videoCreateSchema>;
 
 /**
- * Analysis job create schema
+ * Player Analysis schemas
  */
-export const analysisJobCreateSchema = z.object({
-    videoId: z.number().int(),
-    modelVersion: z.string().min(1),
+export const playerAnalysisCreateSchema = z.object({
+    title: z.string().min(1),
+    date: z.string(), // ISO date
+    playerId: z.number().int(),
+    sessionId: z.number().int().optional().nullable(),
+    notes: z.string().optional().nullable(),
+    inputMode: z.enum(["manual", "video"]).default("manual"),
+    videoId: z.number().int().optional().nullable(),
+    analysisData: z.record(z.string(), z.any()),
+    organizationId: z.number().int(),
 });
 
-export type AnalysisJobCreateInput = z.infer<typeof analysisJobCreateSchema>;
+export const playerAnalysisUpdateSchema = z.object({
+    title: z.string().min(1).optional(),
+    date: z.string().optional(),
+    notes: z.string().optional().nullable(),
+    analysisData: z.record(z.string(), z.any()).optional(),
+});
+
+/**
+ * Match Analysis schemas
+ */
+export const matchAnalysisCreateSchema = z.object({
+    title: z.string().min(1),
+    date: z.string(),
+    matchId: z.number().int().optional().nullable(),
+    homeTeam: z.string().min(1),
+    awayTeam: z.string().min(1),
+    notes: z.string().optional().nullable(),
+    inputMode: z.enum(["manual", "video"]).default("manual"),
+    videoId: z.number().int().optional().nullable(),
+    matchStats: z.record(z.string(), z.any()),
+    matchEvents: z.array(z.any()),
+    organizationId: z.number().int(),
+});
+
+export const matchAnalysisUpdateSchema = z.object({
+    title: z.string().min(1).optional(),
+    date: z.string().optional(),
+    notes: z.string().optional().nullable(),
+    matchStats: z.record(z.string(), z.any()).optional(),
+    matchEvents: z.array(z.any()).optional(),
+});
+
+/**
+ * Match schemas
+ */
+export const matchCreateSchema = z.object({
+    date: z.string(),
+    homeTeamId: z.number().int().optional().nullable(),
+    awayTeamId: z.number().int().optional().nullable(),
+    homeTeamName: z.string().optional().nullable(),
+    awayTeamName: z.string().optional().nullable(),
+    venue: z.string().optional().nullable(),
+    organizationId: z.number().int(),
+    competitionId: z.number().int().optional().nullable(),
+});
+
+export const matchUpdateSchema = z.object({
+    date: z.string().optional(),
+    homeScore: z.number().int().optional(),
+    awayScore: z.number().int().optional(),
+    status: z.enum(["SCHEDULED", "LIVE", "FINISHED", "POSTPONED", "CANCELLED"]).optional(),
+    venue: z.string().optional().nullable(),
+});
+
+/**
+ * Tactical Board schemas
+ */
+export const tacticalBoardCreateSchema = z.object({
+    name: z.string().min(1),
+    teamId: z.number().int(),
+    formationId: z.number().int().optional().nullable(),
+    formationData: z.record(z.string(), z.any()).optional().nullable(),
+    annotations: z.array(z.any()).optional().default([]),
+    instructions: z.array(z.any()).optional().default([]),
+    organizationId: z.number().int(),
+});
+
+export const tacticalBoardUpdateSchema = z.object({
+    name: z.string().min(1).optional(),
+    formationId: z.number().int().optional().nullable(),
+    formationData: z.record(z.string(), z.any()).optional().nullable(),
+    annotations: z.array(z.any()).optional(),
+    instructions: z.array(z.any()).optional(),
+});
+
+/**
+ * Video Clip schemas
+ */
+export const videoClipCreateSchema = z.object({
+    videoId: z.number().int(),
+    title: z.string().min(1),
+    startTime: z.number(),
+    endTime: z.number(),
+    tags: z.array(z.string()).optional().default([]),
+    notes: z.string().optional().nullable(),
+});
+
+export type PlayerAnalysisCreateInput = z.infer<typeof playerAnalysisCreateSchema>;
+export type MatchAnalysisCreateInput = z.infer<typeof matchAnalysisCreateSchema>;
+export type MatchCreateInput = z.infer<typeof matchCreateSchema>;
+export type TacticalBoardCreateInput = z.infer<typeof tacticalBoardCreateSchema>;
