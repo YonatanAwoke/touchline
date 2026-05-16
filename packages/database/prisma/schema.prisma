@@ -27,9 +27,6 @@ model Organization {
   sessions     Session[]
   videos       Video[]
   videoClips   VideoClip[]
-  tacticalBoards TacticalBoard[]
-  matchAnalyses  MatchAnalysis[]
-  playerAnalyses PlayerAnalysis[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -39,8 +36,6 @@ model User {
   email                String         @unique
   username             String         @unique
   password             String
-  firstName            String?
-  lastName             String?
   role                 Role           @default(COACH)
   organizationId       Int
   organization         Organization   @relation(fields: [organizationId], references: [id])
@@ -54,8 +49,6 @@ model User {
   playerProfile        Player?
   refreshTokens        RefreshToken[]
   sessionParticipants  SessionParticipant[]
-  todos                Todo[]
-  tacticalBoards       TacticalBoard[]
 }
 
 model RefreshToken {
@@ -121,8 +114,6 @@ model Player {
   updatedAt         DateTime          @updatedAt
   scorers           Scorer[]
   videoClips        VideoClip[]
-  formationPositions FormationPosition[]
-  playerAnalyses    PlayerAnalysis[]
 }
 
 enum Position {
@@ -153,8 +144,6 @@ model Team {
   players        Player[]
   sessions       Session[]
   matches        Match[]
-  formations     Formation[]
-  tacticalBoards TacticalBoard[]
 }
 
 enum DominantFoot {
@@ -189,7 +178,6 @@ model Session {
   notes          String?
 
   participants   SessionParticipant[]
-  todos          Todo[]
   playerAnalyses PlayerAnalysis[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -243,8 +231,6 @@ model Video {
   metrics       Metric[]
 
   createdAt     DateTime       @default(now())
-  matchAnalyses  MatchAnalysis[]
-  playerAnalyses PlayerAnalysis[]
 }
 
 model VideoClip {
@@ -277,7 +263,6 @@ model AnalysisJob {
 
   modelVersion String
   status       AnalysisStatus  @default(QUEUED)
-  progressPct  Int?            @default(0)
 
   results      AnalysisResult[]
 
@@ -308,12 +293,7 @@ model Match {
   result      MatchResult?
 
   videos      Video[]
-  todos       Todo[]
-  
-  tacticalBoardId Int?
-  tacticalBoard   TacticalBoard? @relation(fields: [tacticalBoardId], references: [id], onDelete: SetNull)
 
-  matchAnalyses   MatchAnalysis[]
   createdAt   DateTime @default(now())
 }
 
@@ -457,6 +437,7 @@ model Todo {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
 model TacticalBoard {
   id              Int           @id @default(autoincrement())
   name            String
@@ -511,6 +492,7 @@ model PlayerAnalysis {
   session         Session?      @relation(fields: [sessionId], references: [id])
   notes           String?
   inputMode       String        @default("manual") // "manual" | "video"
+  status          AnalysisStatus @default(COMPLETED)
   videoId         Int?
   video           Video?        @relation(fields: [videoId], references: [id])
   analysisData    Json

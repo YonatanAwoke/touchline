@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/use-toast";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MoreHorizontal, Users, User, UserCircle, CalendarDays, Plus, ChevronUp, ChevronDown } from "lucide-react";
+import { MoreHorizontal, Users, User, UserCircle, CalendarDays, Plus } from "lucide-react";
 import EditPlayerForm from "@/components/EditPlayerForm";
 
 // API Fetchers
@@ -42,53 +42,6 @@ const Players: React.FC = () => {
   const [selectedPlayer, setSelectedPlayer] = useState<any | null>(null);
   const [editingPlayer, setEditingPlayer] = useState<any | null>(null);
   const [confirmDeletePlayer, setConfirmDeletePlayer] = useState<any | null>(null);
-  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" | null }>({
-    key: "id",
-    direction: "asc",
-  });
-
-  const sortedPlayers = useMemo(() => {
-    if (!sortConfig.key || !sortConfig.direction) return players;
-
-    return [...players].sort((a: any, b: any) => {
-      let aValue: any;
-      let bValue: any;
-
-      if (sortConfig.key === "name") {
-        aValue = a.user?.username || a.name || "";
-        bValue = b.user?.username || b.name || "";
-      } else if (sortConfig.key === "club") {
-        aValue = a.team?.name || "";
-        bValue = b.team?.name || "";
-      } else {
-        aValue = a[sortConfig.key];
-        bValue = b[sortConfig.key];
-      }
-
-      if (aValue < bValue) return sortConfig.direction === "asc" ? -1 : 1;
-      if (aValue > bValue) return sortConfig.direction === "asc" ? 1 : -1;
-      return 0;
-    });
-  }, [players, sortConfig]);
-
-  const handleSort = (key: string) => {
-    let direction: "asc" | "desc" | null = "asc";
-    if (sortConfig.key === key && sortConfig.direction === "asc") {
-      direction = "desc";
-    } else if (sortConfig.key === key && sortConfig.direction === "desc") {
-      direction = null;
-    }
-    setSortConfig({ key, direction });
-  };
-
-  const SortIcon = ({ column }: { column: string }) => {
-    if (sortConfig.key !== column) return null;
-    return sortConfig.direction === "asc" ? (
-      <ChevronUp size={14} className="ml-1 inline" />
-    ) : (
-      <ChevronDown size={14} className="ml-1 inline" />
-    );
-  };
 
   const statCards = [
     { label: "Total Players", value: players.length, icon: Users },
@@ -163,24 +116,12 @@ const Players: React.FC = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10 cursor-pointer hover:text-primary" onClick={() => handleSort("id")}>
-                  ID <SortIcon column="id" />
-                </TableHead>
-                <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleSort("name")}>
-                  Name <SortIcon column="name" />
-                </TableHead>
-                <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleSort("club")}>
-                  Club <SortIcon column="club" />
-                </TableHead>
-                <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleSort("position")}>
-                  Position <SortIcon column="position" />
-                </TableHead>
-                <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleSort("nationality")}>
-                  Nationality <SortIcon column="nationality" />
-                </TableHead>
-                <TableHead className="cursor-pointer hover:text-primary" onClick={() => handleSort("isActive")}>
-                  Status <SortIcon column="isActive" />
-                </TableHead>
+                <TableHead className="w-10">ID</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Club</TableHead>
+                <TableHead>Position</TableHead>
+                <TableHead>Nationality</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead className="w-8"></TableHead>
               </TableRow>
             </TableHeader>
@@ -188,7 +129,7 @@ const Players: React.FC = () => {
               {isLoading ? (
                 <TableRow><TableCell colSpan={7} className="text-center">Loading...</TableCell></TableRow>
               ) : (
-                sortedPlayers.map((p: any) => (
+                players.map((p: any) => (
                   <TableRow 
                     key={p.id} 
                     className="cursor-pointer transition-colors hover:bg-secondary/50"
@@ -198,11 +139,11 @@ const Players: React.FC = () => {
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
-                          <AvatarFallback className="bg-primary text-primary-foreground text-xs uppercase">
-                            {p.user?.username ? p.user.username[0] : "U"}
+                          <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                            {p.firstName ? p.firstName[0] : "U"}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="font-medium text-foreground">{p.user?.username || p.name || `Player ${p.id}`}</span>
+                        <span className="font-medium text-foreground">{p.firstName} {p.lastName}</span>
                       </div>
                     </TableCell>
                     <TableCell>{p.team?.name ?? "—"}</TableCell>
@@ -248,7 +189,7 @@ const Players: React.FC = () => {
           <DialogHeader>
             <div className="flex items-center gap-3">
               <UserCircle size={24} className="text-primary" />
-              <DialogTitle>{selectedPlayer?.user?.username || "Player Details"}</DialogTitle>
+              <DialogTitle>{selectedPlayer?.firstName} {selectedPlayer?.lastName}</DialogTitle>
             </div>
           </DialogHeader>
           <div className="space-y-2 text-sm">

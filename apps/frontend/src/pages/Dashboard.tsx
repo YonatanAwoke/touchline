@@ -12,6 +12,7 @@ import { format, startOfMonth, endOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 import { DateRange } from "react-day-picker";
 import { Link } from "react-router-dom";
+import DashboardMetrics from "@/components/dashboard/DashboardMetrics";
 
 const resultColor: Record<string, string> = {
   Win: "text-primary",
@@ -210,6 +211,12 @@ const Dashboard: React.FC = () => {
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      {/* Performance Metrics */}
+      <div className="mt-10">
+        <h2 className="mb-4 text-xl font-bold text-foreground">Performance Metrics</h2>
+        <DashboardMetrics />
       </div>
     </DashboardLayout>
   );

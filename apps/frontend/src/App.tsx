@@ -24,6 +24,9 @@ import Settings from "./pages/Settings";
 import Analysis from "./pages/Analysis";
 import TacticalBoard from "./pages/TacticalBoard";
 import Examination from "./pages/Examination";
+import Blog from "./pages/Blog";
+import BlogPost from "./pages/BlogPost";
+import Contact from "./pages/Contact";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "./lib/auth";
 import { ThemeProvider } from "./lib/theme";
@@ -65,6 +68,9 @@ const App = () => (
             <Route path="/dashboard/examination" element={<Examination />} />
             <Route path="/dashboard/settings" element={<Settings />} />
             <Route path="/early-access" element={<EarlyAccess />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/blog/:slug" element={<BlogPost />} />
+            <Route path="/contact" element={<Contact />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

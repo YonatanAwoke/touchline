@@ -2,32 +2,14 @@ import { NextResponse } from "next/server";
 import prisma from "@touchline/database";
 import { requireAuth } from "@/lib/security";
 import { playerAnalysisCreateSchema } from "@/lib/validation";
-import { writeFile } from "fs/promises";
+import { writeFile, mkdir } from "fs/promises";
 import path from "path";
-import { spawn } from "child_process";
+import { queueAnalysisJob } from "@/lib/queue";
 
-// Allow large video uploads and opt out of static caching for this route
-export const maxDuration = 300; // 5 minutes for long analysis jobs
+// Allow large video uploads
+export const maxDuration = 300; 
 export const dynamic = "force-dynamic";
 
-/**
- * @openapi
- * /api/examinations/player:
- *   post:
- *     summary: Create a new player analysis
- *     tags:
- *       - Examinations
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [title, date, playerId, analysisData]
- *     responses:
- *       201:
- *         description: Player analysis created
- */
 export async function POST(request: Request) {
     const auth = await requireAuth();
     if (!auth.session) return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -36,6 +18,7 @@ export async function POST(request: Request) {
     try {
         const contentType = request.headers.get("content-type") || "";
         let body: any;
+        let videoId: number | undefined;
 
         if (contentType.includes("multipart/form-data")) {
             const formData = await request.formData();
@@ -48,39 +31,31 @@ export async function POST(request: Request) {
                 sessionId: formData.get("sessionId") ? Number(formData.get("sessionId")) : undefined,
                 notes: formData.get("notes"),
                 inputMode: "video",
-                analysisData: {} // Placeholder to be filled by Python
+                analysisData: {} 
             };
 
             if (videoFile) {
                 const arrayBuffer = await videoFile.arrayBuffer();
                 const buffer = Buffer.from(arrayBuffer);
-                const tempPath = path.join(process.cwd(), "uploads", "temp", `${Date.now()}_${videoFile.name}`);
+                const uploadDir = path.join(process.cwd(), "uploads", "temp");
+                await mkdir(uploadDir, { recursive: true });
+                
+                const filename = `${Date.now()}_${videoFile.name}`;
+                const tempPath = path.join(uploadDir, filename);
                 await writeFile(tempPath, buffer);
 
-                // Run Python Analysis
-                const pythonPath = path.join(process.cwd(), "python_venv", "bin", "python3");
-                const scriptPath = path.join(process.cwd(), "scripts", "analyze_player.py");
-                
-                const pythonProcess = spawn(pythonPath, [scriptPath, tempPath]);
-                
-                let analysisOutput = "";
-                let errorOutput = "";
-
-                await new Promise((resolve, reject) => {
-                    pythonProcess.stdout.on("data", (data) => { analysisOutput += data.toString(); });
-                    pythonProcess.stderr.on("data", (data) => { errorOutput += data.toString(); });
-                    pythonProcess.on("close", (code) => {
-                        if (code === 0) resolve(analysisOutput);
-                        else reject(new Error(errorOutput || `Python process exited with code ${code}`));
-                    });
+                // Create a Video record first
+                const video = await prisma.video.create({
+                    data: {
+                        storagePath: filename,
+                        originalName: videoFile.name,
+                        type: "TRAINING",
+                        status: "PROCESSING",
+                        organizationId: session.organizationId,
+                    }
                 });
-
-                const jsonStartIndex = analysisOutput.indexOf('{');
-                if (jsonStartIndex === -1) throw new Error("Could not parse AI analysis results. Output: " + analysisOutput);
-                const cleanJson = analysisOutput.substring(jsonStartIndex);
-                
-                body.analysisData = JSON.parse(cleanJson);
-                if (body.analysisData.error) throw new Error(body.analysisData.error);
+                videoId = video.id;
+                body.videoId = videoId;
             }
         } else {
             body = await request.json();
@@ -90,6 +65,8 @@ export async function POST(request: Request) {
         if (!result.success) return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
 
         const data = result.data;
+        
+        // Create the PlayerAnalysis record immediately
         const analysis = await prisma.playerAnalysis.create({
             data: {
                 title: data.title,
@@ -98,16 +75,31 @@ export async function POST(request: Request) {
                 sessionId: data.sessionId,
                 notes: data.notes,
                 inputMode: data.inputMode,
+                status: data.inputMode === "video" ? "QUEUED" : "COMPLETED",
                 videoId: data.videoId,
                 analysisData: data.analysisData,
                 organizationId: session.organizationId,
             }
         });
 
+        // If it's a video, queue the analysis job
+        if (data.inputMode === "video" && videoId) {
+            const video = await prisma.video.findUnique({ where: { id: videoId } });
+            if (video) {
+                await queueAnalysisJob({
+                    videoId: video.id,
+                    storagePath: video.storagePath,
+                    modelVersion: "v1-yolo-pose",
+                    organizationId: session.organizationId,
+                    playerAnalysisId: analysis.id
+                });
+            }
+        }
+
         return NextResponse.json(analysis, { status: 201 });
     } catch (error: any) {
-        console.error("Create player analysis error details:", error?.message, "Meta:", error?.meta, "Code:", error?.code);
-        return NextResponse.json({ error: error.message || "Internal server error", details: error?.meta }, { status: 500 });
+        console.error("Create player analysis error:", error);
+        return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
     }
 }
 

@@ -5,11 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import earlyAccessIllustration from "@/assets/early-access-illustration.png";
+import earlyAccessIllustrationDark from "@/assets/early-access-illustration-dark.png";
 import { isValidEmail } from "@/lib/utils";
+import { useThemeAsset } from "@/lib/useThemeAsset";
 
 const EarlyAccess = () => {
   const [email, setEmail] = useState("");
   const navigate = useNavigate();
+  const heroSrc = useThemeAsset(earlyAccessIllustration, earlyAccessIllustrationDark);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,7 +114,7 @@ const EarlyAccess = () => {
       {/* Right - Illustration */}
       <div className="hidden items-center justify-center bg-background md:flex md:w-1/2">
         <img
-          src={earlyAccessIllustration}
+          src={heroSrc}
           alt="VIP early access stadium pass illustration"
           className="max-h-[600px] w-auto object-contain"
         />

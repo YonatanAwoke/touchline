@@ -21,8 +21,6 @@ import { Label } from "@/components/ui/label";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
 
-import EditCoachForm from "@/components/EditCoachForm";
-
 type CoachType = any;
 
 const Coaches: React.FC = () => {
@@ -66,6 +64,11 @@ const Coaches: React.FC = () => {
     },
     onError: () => toast({ title: "Failed to update coach", variant: "destructive" })
   });
+
+  const onSaveEdit = async (payload: any) => {
+    await updateMutation.mutateAsync(payload);
+    setEditingCoach(null);
+  };
 
   return (
     <DashboardLayout title="Coaches" subtitle="Manage your coaches">
@@ -133,19 +136,34 @@ const Coaches: React.FC = () => {
 
       {/* Edit dialog */}
       <Dialog open={!!editingCoach} onOpenChange={(open) => !open && setEditingCoach(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg animate-scale-in">
           <DialogHeader>
             <DialogTitle>Edit Coach</DialogTitle>
           </DialogHeader>
           {editingCoach && (
-            <EditCoachForm
-              coachId={editingCoach.id}
-              onCancel={() => setEditingCoach(null)}
-              onSave={async (payload) => {
-                await updateMutation.mutateAsync(payload);
-                setEditingCoach(null);
-              }}
-            />
+            <div className="space-y-4">
+              <div>
+                <Label>Bio</Label>
+                <Input defaultValue={editingCoach.bio || ""} id="coach-bio" />
+              </div>
+              <div>
+                <Label>Specialty (comma separated)</Label>
+                <Input defaultValue={(editingCoach.specialty || []).join(", ")} id="coach-specialty" />
+              </div>
+              <div>
+                <Label>License Level (comma separated)</Label>
+                <Input defaultValue={(editingCoach.licenseLevel || []).join(", ")} id="coach-license" />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setEditingCoach(null)}>Cancel</Button>
+                <Button onClick={async () => {
+                  const bio = (document.getElementById("coach-bio") as HTMLInputElement).value;
+                  const specialty = (document.getElementById("coach-specialty") as HTMLInputElement).value.split(",").map(s => s.trim()).filter(Boolean);
+                  const licenseLevel = (document.getElementById("coach-license") as HTMLInputElement).value.split(",").map(s => s.trim()).filter(Boolean);
+                  await onSaveEdit({ id: editingCoach.id, bio, specialty, licenseLevel });
+                }}>Save</Button>
+              </div>
+            </div>
           )}
         </DialogContent>
       </Dialog>

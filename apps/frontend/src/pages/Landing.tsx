@@ -4,11 +4,14 @@ import { Button } from "@/components/ui/button";
 import { BarChart3, Layers, LayoutGrid, Users, Database, PauseCircle, Menu, ArrowRight, ChevronRight } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import dashboardPreview from "@/assets/dashboard-preview.png";
+import dashboardPreviewDark from "@/assets/dashboard-preview-dark.png";
 import footballTexture from "@/assets/football-texture.jpg";
 import footballSvg from "@/assets/football.svg";
 import BuiltForEveryLevel from "@/components/landing/BuiltForEveryLevel";
 import Testimonials from "@/components/landing/Testimonials";
 import InteractivePitchBackground from "@/components/landing/InteractivePitchBackground";
+import { useThemeAsset } from "@/lib/useThemeAsset";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const features = [
   {
@@ -67,6 +70,7 @@ const Landing = () => {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [scrollY, setScrollY] = useState(0);
   const heroRef = useRef<HTMLElement>(null);
+  const dashboardSrc = useThemeAsset(dashboardPreview, dashboardPreviewDark);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -97,17 +101,20 @@ const Landing = () => {
 
         <div className="hidden items-center gap-10 md:flex">
           <span className="cursor-default text-sm font-semibold text-foreground">Home</span>
-          <span className="cursor-default text-sm font-medium text-muted-foreground/70 hover:text-foreground transition-colors">Blog</span>
-          <span className="cursor-default text-sm font-medium text-muted-foreground/70 hover:text-foreground transition-colors">Contact</span>
+          <a href="/blog" className="cursor-pointer text-sm font-medium text-muted-foreground/70 hover:text-foreground transition-colors">Blog</a>
+          <a href="/contact" className="cursor-pointer text-sm font-medium text-muted-foreground/70 hover:text-foreground transition-colors">Contact</a>
         </div>
 
-        <Button
-          variant="default"
-          className="hidden rounded-lg px-6 font-bold italic md:inline-flex"
-          onClick={() => navigate("/auth")}
-        >
-          Get Started
-        </Button>
+        <div className="hidden items-center gap-3 md:flex">
+          <ThemeToggle />
+          <Button
+            variant="default"
+            className="rounded-lg px-6 font-bold italic"
+            onClick={() => navigate("/auth")}
+          >
+            Get Started
+          </Button>
+        </div>
 
         {/* Mobile hamburger */}
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -123,8 +130,8 @@ const Landing = () => {
             </h1>
             <div className="flex flex-col gap-4">
               <span className="cursor-default text-sm font-semibold text-foreground">Home</span>
-              <span className="cursor-default text-sm font-medium text-muted-foreground">Blog</span>
-              <span className="cursor-default text-sm font-medium text-muted-foreground">Contact</span>
+              <a href="/blog" className="cursor-pointer text-sm font-medium text-muted-foreground">Blog</a>
+              <a href="/contact" className="cursor-pointer text-sm font-medium text-muted-foreground">Contact</a>
             </div>
             <Button
               variant="default"
@@ -260,7 +267,7 @@ const Landing = () => {
             <div className="absolute -inset-6 rounded-3xl border border-primary/[0.03] hidden lg:block" />
             <div className="relative overflow-hidden rounded-xl border border-border shadow-2xl shadow-primary/10">
               <img
-                src={dashboardPreview}
+                src={dashboardSrc}
                 alt="Touchline dashboard showing team performance analytics, player stats, and match insights"
                 className="w-full object-cover"
                 loading="lazy"

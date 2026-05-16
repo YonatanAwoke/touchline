@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/use-toast";
 import footballIllustration from "@/assets/football-illustration.png";
+import footballIllustrationDark from "@/assets/football-illustration-dark.png";
+import { useThemeAsset } from "@/lib/useThemeAsset";
 
 const Auth = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -14,6 +16,7 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
   const auth = useAuth();
+  const heroSrc = useThemeAsset(footballIllustration, footballIllustrationDark);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -167,7 +170,7 @@ const Auth = () => {
       {/* Right - Illustration */}
       <div className="hidden items-center justify-center bg-background md:flex md:w-1/2">
         <img
-          src={footballIllustration}
+          src={heroSrc}
           alt="Football players illustration"
           className="max-h-[600px] w-auto object-contain"
         />

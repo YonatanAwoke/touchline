@@ -1,98 +1,107 @@
 import { Worker, Job } from "bullmq";
 import { connection, type AnalysisJobData } from "../lib/queue";
 import prisma from "@touchline/database";
-import { getStoragePath } from "../lib/upload";
+import path from "path";
+import fs from "fs";
+import axios from "axios";
+import FormData from "form-data";
 
 /**
  * Analysis Worker
- * Processes video analysis jobs from the queue
+ * Processes video analysis jobs from the queue by calling the external AI Pipeline
  */
 const worker = new Worker<AnalysisJobData>(
     "analysis",
     async (job: Job<AnalysisJobData>) => {
-        const { videoId, storagePath, modelVersion, organizationId } = job.data;
+        const { videoId, storagePath, playerAnalysisId, organizationId } = job.data;
 
         console.log(`Processing analysis job ${job.id} for video ${videoId}`);
 
         try {
-            // Update job status to PROCESSING
-            await prisma.analysisJob.updateMany({
-                where: { videoId, modelVersion },
-                data: {
-                    status: "PROCESSING",
-                    startedAt: new Date(),
-                },
+            // 1. Update statuses to PROCESSING
+            if (playerAnalysisId) {
+                await prisma.playerAnalysis.update({
+                    where: { id: playerAnalysisId },
+                    data: { status: "PROCESSING" }
+                });
+            }
+            
+            await prisma.video.update({
+                where: { id: videoId },
+                data: { status: "PROCESSING" }
             });
 
-            // Get full file path
-            const filePath = getStoragePath(storagePath);
-
-            // TODO: Call Python AI service here
-            // For now, simulate processing with a delay
-            await new Promise(resolve => setTimeout(resolve, 5000));
-
-            // Mock results
-            const mockResults = [
-                {
-                    type: "TRACKING" as const,
-                    payload: {
-                        players: [
-                            { id: 1, positions: [[100, 200], [150, 250]] },
-                        ],
-                    },
-                },
-                {
-                    type: "METRICS" as const,
-                    payload: {
-                        totalDistance: 5.2,
-                        maxSpeed: 28.5,
-                        sprints: 12,
-                    },
-                },
-            ];
-
-            // Find the analysis job
-            const analysisJob = await prisma.analysisJob.findFirst({
-                where: { videoId, modelVersion },
-            });
-
-            if (!analysisJob) {
-                throw new Error("Analysis job not found");
+            // 2. Prepare file for upload
+            const filePath = path.join(process.cwd(), "uploads", "temp", storagePath);
+            if (!fs.existsSync(filePath)) {
+                throw new Error(`Video file not found at ${filePath}`);
             }
 
-            // Store results in database
-            await prisma.$transaction([
-                ...mockResults.map(result =>
-                    prisma.analysisResult.create({
+            // 3. Call External AI Pipeline (Hugging Face / FastAPI)
+            const aiPipelineUrl = process.env.AI_PIPELINE_URL || "http://localhost:7860";
+            console.log(`Sending video to AI Pipeline at ${aiPipelineUrl}/analyze`);
+            
+            const form = new FormData();
+            form.append("file", fs.createReadStream(filePath));
+
+            const response = await axios.post(`${aiPipelineUrl}/analyze`, form, {
+                headers: { ...form.getHeaders() },
+                maxContentLength: Infinity,
+                maxBodyLength: Infinity,
+                timeout: 600000 // 10 minute timeout for long videos
+            });
+
+            const analysisResults = response.data;
+
+            if (analysisResults.error) {
+                throw new Error(analysisResults.error);
+            }
+
+            // 4. Update database with results
+            await prisma.$transaction(async (tx) => {
+                // Update PlayerAnalysis
+                if (playerAnalysisId) {
+                    await tx.playerAnalysis.update({
+                        where: { id: playerAnalysisId },
                         data: {
-                            analysisJobId: analysisJob.id,
-                            type: result.type,
-                            payload: result.payload as any,
-                        },
-                    })
-                ),
-                prisma.analysisJob.update({
-                    where: { id: analysisJob.id },
-                    data: {
-                        status: "COMPLETED",
-                        finishedAt: new Date(),
-                    },
-                }),
-            ]);
+                            analysisData: analysisResults,
+                            status: "COMPLETED",
+                            updatedAt: new Date()
+                        }
+                    });
+                }
+
+                // Update Video
+                await tx.video.update({
+                    where: { id: videoId },
+                    data: { status: "COMPLETED" }
+                });
+            });
+
+            // 5. Cleanup temp file
+            try {
+                fs.unlinkSync(filePath);
+            } catch (err) {
+                console.warn(`Could not delete temp file ${filePath}:`, err);
+            }
 
             console.log(`Analysis job ${job.id} completed successfully`);
+            return { success: true };
 
-            return { success: true, resultsCount: mockResults.length };
-        } catch (error) {
-            console.error(`Analysis job ${job.id} failed:`, error);
+        } catch (error: any) {
+            console.error(`Analysis job ${job.id} failed:`, error.message);
 
-            // Update job status to FAILED
-            await prisma.analysisJob.updateMany({
-                where: { videoId, modelVersion },
-                data: {
-                    status: "FAILED",
-                    finishedAt: new Date(),
-                },
+            // Update statuses to FAILED
+            if (playerAnalysisId) {
+                await prisma.playerAnalysis.update({
+                    where: { id: playerAnalysisId },
+                    data: { status: "FAILED" }
+                });
+            }
+
+            await prisma.video.update({
+                where: { id: videoId },
+                data: { status: "FAILED" }
             });
 
             throw error;
@@ -100,10 +109,10 @@ const worker = new Worker<AnalysisJobData>(
     },
     {
         connection,
-        concurrency: 2,
+        concurrency: 1, // Only process one video at a time to save memory
         limiter: {
-            max: 10,
-            duration: 60000, // 10 jobs per minute
+            max: 5,
+            duration: 60000,
         },
     }
 );
@@ -120,6 +129,6 @@ worker.on("error", (err) => {
     console.error("Worker error:", err);
 });
 
-console.log("Analysis worker started");
+console.log("Analysis worker started and ready for HF pipeline");
 
 export default worker;

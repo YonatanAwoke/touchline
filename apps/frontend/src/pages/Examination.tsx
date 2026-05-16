@@ -53,6 +53,7 @@ interface TrainingAnalysis {
   videoFile?: string;
   notes: string;
   inputMode: "manual" | "video";
+  status?: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED";
   /** Which metric groups were selected for this examination. Undefined = all (legacy). */
   selectedMetrics?: string[];
   insights?: string[];
@@ -1724,6 +1725,12 @@ const TrainingAnalysisTab: React.FC<{ players: any[] }> = ({ players }) => {
       const res = await fetch("/api/examinations/player", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch player analyses");
       return res.json();
+    },
+    // Poll every 5 seconds if there are any queued or processing jobs
+    refetchInterval: (query) => {
+      const data = query.state.data as any;
+      const hasPending = data?.items?.some((a: any) => a.status === "QUEUED" || a.status === "PROCESSING");
+      return hasPending ? 5000 : false;
     }
   });
   const analyses: TrainingAnalysis[] = analysesData?.items || [];
@@ -1760,7 +1767,7 @@ const TrainingAnalysisTab: React.FC<{ players: any[] }> = ({ players }) => {
     onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["player-analyses"] });
         setDialogOpen(false);
-        toast.success("Analysis created successfully!");
+        toast.success("Analysis created and queued for processing!");
     },
     onError: (error: any) => {
         toast.error(error.message);
@@ -1769,12 +1776,14 @@ const TrainingAnalysisTab: React.FC<{ players: any[] }> = ({ players }) => {
 
   if (viewing) return <TrainingDetailView analysis={viewing} allAnalyses={analyses} onBack={() => setViewing(null)} players={players} onNavigate={setViewing} />;
 
-  const playerOf = (a: TrainingAnalysis) => players.find(pl => pl.id === a.playerId);
+  const playerOf = (a: TrainingAnalysis) => players.find(pl => pl.id === Number(a.playerId));
   const pName = (a: TrainingAnalysis) => {
     const p = playerOf(a);
     return p ? (p.user?.username || p.name || `Player ${p.id}`) : "Unknown";
   };
   const overallOf = (a: TrainingAnalysis) => {
+    if (a.status === "QUEUED" || a.status === "PROCESSING") return "—";
+    if (a.status === "FAILED") return "Err";
     const p = playerOf(a);
     return deriveMetrics(a.analysisData?.movement || [], a.analysisData?.summary || {}, p?.position || "").overall;
   };
@@ -1823,13 +1832,32 @@ const TrainingAnalysisTab: React.FC<{ players: any[] }> = ({ players }) => {
         columns={[
           { key: "title", label: "Title", render: (a) => <span className="font-medium text-foreground">{a.title}</span> },
           { key: "player", label: "Player", render: (a) => <span className="text-muted-foreground">{pName(a)}</span> },
-          { key: "position", label: "Position", render: (a) => <span className="text-sm text-muted-foreground">{playerOf(a)?.position || "—"}</span> },
           { key: "date", label: "Date", render: (a) => <span className="text-sm">{new Date(a.date).toLocaleDateString()}</span> },
-          { key: "overall", label: "Overall", render: (a) => <span className="font-bold text-primary tabular-nums">{overallOf(a)}</span> },
-          { key: "topSpeed", label: "Top Speed", render: (a) => <span className="text-sm tabular-nums">{(a.analysisData?.summary?.topSpeed ?? 0).toFixed(1)} m/s</span> },
+          { key: "overall", label: "Overall", render: (a) => (
+            <span className="font-bold text-primary tabular-nums">
+              {a.status === "PROCESSING" ? <Loader2 className="h-3 w-3 animate-spin inline mr-1" /> : null}
+              {overallOf(a)}
+            </span>
+          )},
+          { key: "status", label: "Status", render: (a) => {
+            const status = a.status || "COMPLETED";
+            const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+              QUEUED: "outline",
+              PROCESSING: "secondary",
+              COMPLETED: "default",
+              FAILED: "destructive"
+            };
+            return <Badge variant={variants[status] || "default"} className="text-[10px] px-1.5 py-0 uppercase">{status}</Badge>;
+          }},
           { key: "mode", label: "Mode", render: (a) => <Badge variant="secondary" className="text-xs">{a.inputMode === "video" ? "Video" : "Manual"}</Badge> },
         ]}
-        onView={(a) => setViewing(a)}
+        onView={(a) => {
+          if (a.status === "QUEUED" || a.status === "PROCESSING") {
+            toast.info("Analysis is still being processed by AI. Please wait.");
+            return;
+          }
+          setViewing(a);
+        }}
         onDelete={(a) => deleteMutation.mutate(a.id)}
         emptyState={emptyState}
       />

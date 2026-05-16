@@ -1,11 +1,16 @@
-import { Queue, Worker, Job } from "bullmq";
+import { Queue } from "bullmq";
 import IORedis from "ioredis";
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 
-// Create Redis connection
+// Create Redis connection with TLS when using rediss:// (Upstash)
+const isTls = REDIS_URL.startsWith("rediss://");
 const connection = new IORedis(REDIS_URL, {
     maxRetriesPerRequest: null,
+    family: 0, // helpful for DNS resolution
+    enableOfflineQueue: true,
+    enableReadyCheck: true,
+    tls: isTls ? {} : undefined,
 });
 
 // Job data interface
@@ -14,6 +19,7 @@ export interface AnalysisJobData {
     storagePath: string;
     modelVersion: string;
     organizationId: number;
+    playerAnalysisId?: number;
 }
 
 // Create analysis queue

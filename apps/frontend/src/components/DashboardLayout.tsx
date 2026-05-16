@@ -1,6 +1,7 @@
 import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import useAuth from "@/lib/auth";
+import NotificationsBell from "./NotificationsBell";
 import {
   Sidebar,
   SidebarContent,
@@ -25,7 +26,6 @@ import {
   Settings,
   LogOut,
   Search,
-  Bell,
   Building2,
   Shield,
   Trophy,
@@ -108,6 +108,19 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title, subt
       requestAnimationFrame(() => searchInputRef.current?.focus());
     }
   }, [searchOpen]);
+
+  // Global Cmd/Ctrl+K to open and focus the search bar
+  React.useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+        requestAnimationFrame(() => searchInputRef.current?.focus());
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const displayUser = user || { username: "Demo User", email: "demo@touchline.com", id: 0, role: "coach" };
 
@@ -206,9 +219,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title, subt
                   }`}
                 />
               </div>
-              <button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-secondary">
-                <Bell size={18} />
-              </button>
+              <NotificationsBell />
             </div>
           </div>
 
