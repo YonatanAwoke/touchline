@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/security";
 import { playerAnalysisCreateSchema } from "@/lib/validation";
 import { uploadToSupabase } from "@/lib/supabase";
 import { queueAnalysisJob } from "@/lib/queue";
+import { sanitizeFilename } from "@/lib/upload";
 
 // Allow large video uploads
 export const maxDuration = 300; 
@@ -37,7 +38,9 @@ export async function POST(request: Request) {
                 const arrayBuffer = await videoFile.arrayBuffer();
                 const buffer = Buffer.from(arrayBuffer);
                 
-                const filename = `player-analyses/${Date.now()}_${videoFile.name.replace(/\s+/g, '_')}`;
+                const ext = videoFile.name.split('.').pop();
+                const safeName = sanitizeFilename(videoFile.name.replace(`.${ext}`, ''));
+                const filename = `player-analyses/${Date.now()}_${safeName}.${ext}`;
                 
                 // Upload to Supabase Storage
                 console.log(`Uploading ${videoFile.name} to Supabase Storage: ${filename}`);

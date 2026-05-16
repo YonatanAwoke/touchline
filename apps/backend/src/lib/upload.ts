@@ -40,13 +40,30 @@ export async function initializeUploadDir() {
 }
 
 /**
+ * Sanitize filename to remove special characters and emojis
+ */
+export function sanitizeFilename(filename: string): string {
+    return filename
+        .replace(/[^\x00-\x7F]/g, "") // Remove non-ASCII (emojis, etc.)
+        .replace(/\s+/g, "_")         // Replace spaces with underscores
+        .replace(/[^a-zA-Z0-9._-]/g, ""); // Remove any other non-safe chars
+}
+
+/**
  * Generate unique filename for video
  */
 export function generateVideoFilename(organizationId: number, originalName: string): string {
     const ext = path.extname(originalName).toLowerCase();
+    const baseName = path.basename(originalName, ext);
+    const sanitizedBase = sanitizeFilename(baseName);
+    
     const timestamp = Date.now();
     const uuid = randomUUID().split("-")[0];
-    return `${organizationId}_${timestamp}_${uuid}${ext}`;
+    
+    // Fallback if sanitization makes it empty
+    const finalBase = sanitizedBase || "video";
+    
+    return `${organizationId}_${timestamp}_${uuid}_${finalBase}${ext}`;
 }
 
 /**
