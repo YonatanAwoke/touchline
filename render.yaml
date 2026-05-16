@@ -1,12 +1,11 @@
 services:
   - type: worker
     name: touchline-analysis-worker
-    runtime: node
+    runtime: docker
     region: oregon # Change to 'frankfurt' if your DB/Redis is in EU
     repo: https://github.com/YonatanAwoke/touchline
     branch: main
-    buildCommand: npm install -g bun && bun install
-    startCommand: cd apps/backend && bun run src/workers/analysis-worker.ts
+    dockerfilePath: ./Dockerfile.worker
     plan: starter
     envVars:
       - key: DATABASE_URL

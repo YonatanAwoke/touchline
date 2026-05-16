@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1
+
+# Use official Bun image
+FROM oven/bun:1 AS base
+WORKDIR /app
+
+# Copy root package files (monorepo workspace)
+COPY package.json bun.lock* ./
+COPY packages/ ./packages/
+COPY apps/backend/package.json ./apps/backend/package.json
+
+# Install all dependencies from the root (resolves workspace:* protocol)
+RUN bun install --frozen-lockfile
+
+# Copy the rest of the backend app
+COPY apps/backend/ ./apps/backend/
+
+# Generate Prisma client
+RUN bun x prisma generate --schema packages/database/prisma/schema.prisma
+
+# Run the worker
+CMD ["bun", "run", "apps/backend/src/workers/analysis-worker.ts"]
