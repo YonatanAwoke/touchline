@@ -306,6 +306,7 @@ export const videoClipCreateSchema = z.object({
     title: z.string().min(1),
     startTime: z.number(),
     endTime: z.number(),
+    playerId: z.number().int().optional().nullable(),
     tags: z.array(z.string()).optional().default([]),
     notes: z.string().optional().nullable(),
 });
