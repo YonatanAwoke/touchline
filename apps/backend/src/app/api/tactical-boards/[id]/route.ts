@@ -57,7 +57,7 @@ export async function PATCH(
 
         const updated = await prisma.tacticalBoard.update({
             where: { id },
-            data: result.data
+            data: result.data as any
         });
 
         return NextResponse.json(updated);
