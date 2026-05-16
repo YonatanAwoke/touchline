@@ -107,7 +107,7 @@ export async function POST(request: Request) {
                 competition: competition as any,
                 venue,
                 matchDate: new Date(matchDate),
-                tacticalBoardId,
+                tacticalBoards: tacticalBoardId ? { connect: { id: tacticalBoardId } } : undefined,
                 result: matchResultData ? {
                     create: {
                         homeScore: matchResultData.homeScore,
@@ -214,7 +214,7 @@ export async function GET(request: Request) {
                             } 
                         }
                     },
-                    tacticalBoard: true
+                    tacticalBoards: true
                 },
                 skip,
                 take,
