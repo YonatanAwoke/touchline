@@ -135,7 +135,7 @@ export async function POST(request: Request) {
                         } 
                     }
                 },
-                tacticalBoard: true
+                tacticalBoards: true
             }
         });
 
