@@ -8,9 +8,12 @@ WORKDIR /app
 COPY package.json bun.lock* ./
 COPY packages/ ./packages/
 COPY apps/backend/package.json ./apps/backend/package.json
+COPY apps/frontend/package.json ./apps/frontend/package.json
+COPY apps/ai-pipeline/package.json* ./apps/ai-pipeline/package.json
+COPY apps/web/package.json* ./apps/web/package.json
 
 # Install all dependencies from the root (resolves workspace:* protocol)
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # Copy the rest of the backend app
 COPY apps/backend/ ./apps/backend/
