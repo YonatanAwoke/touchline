@@ -9,7 +9,10 @@ import {
     isValidVideoFormat,
     extractVideoMetadata,
     uploadConfig,
+    isCloudStorage,
 } from "@/lib/upload";
+import { uploadToSupabase } from "@/lib/supabase";
+import { queueAnalysisJob } from "@/lib/queue";
 
 /**
  * @openapi
@@ -130,10 +133,19 @@ export async function POST(request: Request) {
 
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
-        await writeFile(storagePath, buffer);
 
-        // Extract video metadata
-        const metadata = await extractVideoMetadata(storagePath);
+        if (isCloudStorage) {
+            console.log(`[Upload] Saving to Supabase storage: ${filename}`);
+            await uploadToSupabase("videos", filename, buffer, file.type);
+        } else {
+            console.log(`[Upload] Saving to local storage: ${storagePath}`);
+            await writeFile(storagePath, buffer);
+        }
+
+        // Extract video metadata (only if local)
+        const metadata = !isCloudStorage 
+            ? await extractVideoMetadata(storagePath)
+            : { durationSec: null, fps: null, width: null, height: null };
 
         // Create video record in database
         const video = await prisma.video.create({
@@ -151,6 +163,20 @@ export async function POST(request: Request) {
                 matchId: hasMatch ? matchId : null,
             },
         });
+
+        // 8. Queue Analysis Job automatically
+        try {
+            await queueAnalysisJob({
+                videoId: video.id,
+                storagePath: filename,
+                modelVersion: "v1",
+                organizationId: organizationId,
+            });
+            console.log(`[Upload] Analysis job queued for video ${video.id}`);
+        } catch (queueError) {
+            console.error("[Upload] Failed to queue analysis job:", queueError);
+            // Don't fail the upload if queuing fails, but log it
+        }
 
         return NextResponse.json({
             message: "Video uploaded successfully",

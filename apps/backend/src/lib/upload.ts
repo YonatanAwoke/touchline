@@ -22,6 +22,8 @@ if (existsSync(localFfprobePath)) {
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "./uploads/videos";
 const MAX_FILE_SIZE = parseInt(process.env.MAX_UPLOAD_SIZE || "524288000"); // 500MB default
 
+export const isCloudStorage = !!process.env.SUPABASE_URL || !!process.env.VERCEL;
+
 // Allowed video formats
 const ALLOWED_FORMATS = [".mp4", ".mov", ".avi", ".mkv", ".webm"];
 
@@ -29,6 +31,9 @@ const ALLOWED_FORMATS = [".mp4", ".mov", ".avi", ".mkv", ".webm"];
  * Initialize upload directory
  */
 export async function initializeUploadDir() {
+    // Skip if we are on Vercel or have no local disk access
+    if (process.env.VERCEL) return;
+
     if (!existsSync(UPLOAD_DIR)) {
         await mkdir(UPLOAD_DIR, { recursive: true });
     }
