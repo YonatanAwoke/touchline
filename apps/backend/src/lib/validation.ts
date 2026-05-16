@@ -304,9 +304,10 @@ export const tacticalBoardUpdateSchema = z.object({
 export const videoClipCreateSchema = z.object({
     videoId: z.number().int(),
     title: z.string().min(1),
-    startTime: z.number(),
-    endTime: z.number(),
+    startSec: z.number(),
+    endSec: z.number(),
     playerId: z.number().int().optional().nullable(),
+    label: z.string().optional().nullable(),
     tags: z.array(z.string()).optional().default([]),
     notes: z.string().optional().nullable(),
 });
