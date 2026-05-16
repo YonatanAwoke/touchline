@@ -32,13 +32,13 @@ export async function POST(request: Request) {
       for (const r of results) {
         tx.push(prisma.analysisResult.create({ data: { analysisJobId: Number(analysisJobId), type: r.type, payload: r.payload } }));
       }
-      tx.push(prisma.analysisJob.update({ where: { id: Number(analysisJobId) }, data: { status: status.toUpperCase(), finishedAt: new Date(), rawPayload: body } }));
+      tx.push(prisma.analysisJob.update({ where: { id: Number(analysisJobId) }, data: { status: status.toUpperCase() as any, finishedAt: new Date() } }));
       await prisma.$transaction(tx);
       return NextResponse.json({ ok: true });
     }
 
     // fallback: update any analysisJob in QUEUED_REMOTE and leave a note
-    await prisma.analysisJob.updateMany({ where: { status: "QUEUED_REMOTE" }, data: { status: status.toUpperCase(), finishedAt: new Date(), rawPayload: body } });
+    await prisma.analysisJob.updateMany({ where: { status: "QUEUED_REMOTE" as any }, data: { status: status.toUpperCase() as any, finishedAt: new Date() } });
 
     return NextResponse.json({ ok: true });
   } catch (err) {
