@@ -184,6 +184,11 @@ export async function GET(request: Request) {
         if (sessionId) where.sessionId = Number(sessionId);
         if (matchId) where.matchId = Number(matchId);
 
+        // Exclude videos uploaded for player examinations
+        where.playerAnalyses = {
+            none: {}
+        };
+
         const [items, total] = await prisma.$transaction([
             prisma.video.findMany({
                 where,

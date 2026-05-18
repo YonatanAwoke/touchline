@@ -219,7 +219,7 @@ export const playerAnalysisCreateSchema = z.object({
     notes: z.string().optional().nullable(),
     inputMode: z.enum(["manual", "video"]).default("manual"),
     videoId: z.number().int().optional().nullable(),
-    analysisData: z.record(z.string(), z.any()),
+    analysisData: z.record(z.string(), z.any()).optional().default({}),
     selectedMetrics: z.array(z.string()).optional().default([]),
     organizationId: z.number().int(),
 });
