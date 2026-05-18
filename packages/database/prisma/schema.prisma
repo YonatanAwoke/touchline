@@ -511,6 +511,7 @@ model PlayerAnalysis {
   videoId         Int?
   video           Video?        @relation(fields: [videoId], references: [id])
   analysisData    Json
+  selectedMetrics String[]      @default([])
   organizationId  Int
   organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt       DateTime      @default(now())

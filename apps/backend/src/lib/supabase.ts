@@ -53,3 +53,15 @@ export async function downloadFromSupabase(bucket: string, path: string) {
   if (error) throw error;
   return data;
 }
+
+/**
+ * Create a signed upload URL for a file in Supabase Storage
+ */
+export async function createSignedUploadUrl(bucket: string, path: string) {
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .createSignedUploadUrl(path);
+  
+  if (error) throw error;
+  return data;
+}

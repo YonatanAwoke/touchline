@@ -43,11 +43,18 @@ async def analyze_video(file: UploadFile = File(...)):
         if fps == 0 or np.isnan(fps): fps = 30
         
         frame_count = 0
+        processed_count = 0
         raw_hip_y, raw_hip_x = [], []
         times = []
         knee_angles, hip_angles, arm_angles = [], [], []
         
-        px_to_m = 1.8 / (h / 3) 
+        # Optimization: Process every 3rd frame to speed up analysis on CPU
+        frame_step = 3
+        
+        # Scaling factor for metrics (YOLO will process at 640px width)
+        w_target = 640
+        h_target = int(640 * h / w)
+        px_to_m = 1.8 / (h_target / 3) 
 
         while cap.isOpened():
             success, image = cap.read()
@@ -55,7 +62,14 @@ async def analyze_video(file: UploadFile = File(...)):
                 break
 
             frame_count += 1
-            results = model.track(image, persist=True, conf=0.3, verbose=False)
+            if frame_count % frame_step != 0:
+                continue
+
+            processed_count += 1
+            
+            # Resize for faster CPU inference
+            input_img = cv2.resize(image, (640, int(640 * h / w)))
+            results = model.track(input_img, persist=True, conf=0.3, verbose=False)
             
             if len(results) > 0 and len(results[0].keypoints) > 0:
                 keypoints = results[0].keypoints.xy.cpu().numpy()

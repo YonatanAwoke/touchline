@@ -49,7 +49,7 @@ export async function POST(request: Request) {
                 // Create a Video record
                 const video = await prisma.video.create({
                     data: {
-                        storagePath: filename, // Now stores the Supabase path
+                        storagePath: filename, 
                         originalName: videoFile.name,
                         type: "TRAINING",
                         status: "PROCESSING",
@@ -61,6 +61,22 @@ export async function POST(request: Request) {
             }
         } else {
             body = await request.json();
+            
+            // Handle pre-uploaded video via signed URL
+            if (body.videoPath) {
+                const video = await prisma.video.create({
+                    data: {
+                        storagePath: body.videoPath,
+                        originalName: body.originalName || body.videoPath.split('/').pop() || "video.mp4",
+                        type: "TRAINING",
+                        status: "PROCESSING",
+                        organizationId: session.organizationId,
+                    }
+                });
+                videoId = video.id;
+                body.videoId = videoId;
+                body.inputMode = "video";
+            }
         }
 
         const result = playerAnalysisCreateSchema.safeParse({ ...body, organizationId: session.organizationId });
@@ -80,6 +96,7 @@ export async function POST(request: Request) {
                 status: data.inputMode === "video" ? "QUEUED" : "COMPLETED",
                 videoId: data.videoId,
                 analysisData: data.analysisData as any,
+                selectedMetrics: data.selectedMetrics,
                 organizationId: session.organizationId,
             }
         });

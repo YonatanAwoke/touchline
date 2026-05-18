@@ -1132,23 +1132,54 @@ const CreateTrainingDialog: React.FC<{ open: boolean; onClose: () => void; onCre
     setArmSwingAngle(0); setFormScore(0); setReactionTime(0);
   };
 
-  const handleSubmit = () => {
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleSubmit = async () => {
     if (!title || !date || !playerId) { toast.error("Please fill in all required fields."); return; }
     if (selectedMetrics.length === 0) { toast.error("Select at least one metric to analyze."); return; }
 
     if (inputMode === "video") {
       if (!videoFile) { toast.error("Please select a video file."); return; }
 
-      const formData = new FormData();
-      formData.append("title", title);
-      formData.append("date", date);
-      formData.append("playerId", String(playerId));
-      if (sessionId) formData.append("sessionId", sessionId);
-      formData.append("notes", notes);
-      formData.append("video", videoFile);
-      formData.append("selectedMetrics", JSON.stringify(selectedMetrics));
+      setIsUploading(true);
+      try {
+        // 1. Get signed URL
+        const signRes = await fetch("/api/upload/signed-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: videoFile.name, contentType: videoFile.type }),
+        });
 
-      onCreate(formData);
+        if (!signRes.ok) throw new Error("Failed to get upload URL");
+        const { signedUrl, storagePath } = await signRes.json();
+
+        // 2. Upload directly to Supabase
+        const uploadRes = await fetch(signedUrl, {
+          method: "PUT",
+          body: videoFile,
+          headers: { "Content-Type": videoFile.type }
+        });
+
+        if (!uploadRes.ok) throw new Error("Video upload failed");
+
+        // 3. Create analysis record with path
+        onCreate({
+          title, 
+          date, 
+          playerId: Number(playerId), 
+          sessionId: sessionId ? Number(sessionId) : undefined,
+          notes, 
+          videoPath: storagePath,
+          originalName: videoFile.name,
+          selectedMetrics,
+          inputMode: "video"
+        });
+      } catch (err: any) {
+        toast.error(err.message || "Upload failed");
+        return;
+      } finally {
+        setIsUploading(false);
+      }
     } else {
       const hasManualData = playerData.speed.length > 0 || playerData.jumpHeight.length > 0;
       onCreate({
@@ -1416,8 +1447,14 @@ const CreateTrainingDialog: React.FC<{ open: boolean; onClose: () => void; onCre
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isAnalyzing}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={isAnalyzing}>
-            {isAnalyzing ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Analyzing...</> : "Create Analysis"}
+          <Button onClick={handleSubmit} disabled={isAnalyzing || isUploading}>
+            {isUploading ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Uploading Video...</>
+            ) : isAnalyzing ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Analyzing...</>
+            ) : (
+              "Create Analysis"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
